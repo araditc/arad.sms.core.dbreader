@@ -1,0 +1,11 @@
+﻿{
+  "profiles": {
+    "Arad.SMS.Core.Mellat.MySqlReader": {
+      "commandName": "Project",
+      "dotnetRunMessages": "true",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
