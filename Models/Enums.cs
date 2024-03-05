@@ -18,7 +18,7 @@
 
 using System.ComponentModel;
 
-namespace Arad.SMS.Core.MySqlReader.Models;
+namespace Arad.SMS.Core.DbReader.Models;
 
 public static class Enums
 {

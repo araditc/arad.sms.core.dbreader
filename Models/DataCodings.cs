@@ -1,6 +1,6 @@
 ﻿//
 //  --------------------------------------------------------------------
-//  Copyright (c) 2005-2023 Arad ITC.
+//  Copyright (c) 2005-2024 Arad ITC.
 //
 //  Author : Ammar Heidari <ammar@arad-itc.org>
 //  Licensed under the Apache License, Version 2.0 (the "License")
@@ -17,7 +17,7 @@
 //  --------------------------------------------------------------------
 
 
-namespace Arad.SMS.Core.MySqlReader.Models;
+namespace Arad.SMS.Core.DbReader.Models;
 
 /// <summary>
 /// Indicates the encoding scheme of the short message.

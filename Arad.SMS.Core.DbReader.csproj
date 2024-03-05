@@ -1,14 +1,21 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
-    <TargetFramework>net7.0;net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>
+    <TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-Arad.SMS.Core.MySqlReader-7A94EA03-1BCB-496D-A4F0-D246B36D7D1C</UserSecretsId>
-    <Version>2.2.10.2</Version>
+	<ImplicitUsings>enable</ImplicitUsings>
+	<Nullable>enable</Nullable>
+	<LangVersion>latest</LangVersion>
+	<Title>Arad.Messaging</Title>
+	<Product>Arad.Messaging</Product>
+    <Version>2.2.10.4</Version>
     <Company>Arad ITC</Company>
     <Authors>Ammar Heidari</Authors>
     <Copyright>Arad ITC</Copyright>
     <Description>SQL/MySQL Reader for DB Proxy</Description>
+	<PackageTags>sql,mysql, db-reader,messaging,sms, delivery, mo</PackageTags>
     <PackageProjectUrl>https://github.com/araditc/arad.sms.core.dbreader</PackageProjectUrl>
+	<PackageLicenseUrl>https://github.com/araditc/arad.sms.core.dbreader/-/blob/master/LICENSE</PackageLicenseUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/araditc/arad.sms.core.dbreader</RepositoryUrl>
   </PropertyGroup>
