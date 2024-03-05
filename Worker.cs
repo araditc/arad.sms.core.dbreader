@@ -716,7 +716,7 @@ public class Worker : BackgroundService
 
                     try
                     {
-                        await using SqlCommand cm = new($"{_selectQueryForSend} {_tps}", cn);
+                        await using SqlCommand cm = new(string.Format(_selectQueryForSend,_tps, cn));
                         dt.Load(await cm.ExecuteReaderAsync());
 
                     }
