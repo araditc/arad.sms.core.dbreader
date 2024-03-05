@@ -4,6 +4,13 @@
     <TargetFramework>net7.0;net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-Arad.SMS.Core.MySqlReader-7A94EA03-1BCB-496D-A4F0-D246B36D7D1C</UserSecretsId>
     <Version>2.2.10.2</Version>
+    <Company>Arad ITC</Company>
+    <Authors>Ammar Heidari</Authors>
+    <Copyright>Arad ITC</Copyright>
+    <Description>SQL/MySQL Reader for DB Proxy</Description>
+    <PackageProjectUrl>https://github.com/araditc/arad.sms.core.dbreader</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/araditc/arad.sms.core.dbreader</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,5 +24,12 @@
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
     <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
   </ItemGroup>
 </Project>
