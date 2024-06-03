@@ -8,7 +8,7 @@
 	<LangVersion>latest</LangVersion>
 	<Title>Arad.Messaging</Title>
 	<Product>Arad.Messaging</Product>
-    <Version>2.2.10.4</Version>
+    <Version>2.3.06.4</Version>
     <Company>Arad ITC</Company>
     <Authors>Ammar Heidari</Authors>
     <Copyright>Arad ITC</Copyright>
@@ -25,9 +25,9 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
-    <PackageReference Include="MySql.Data" Version="8.3.0" />
+    <PackageReference Include="MySql.Data" Version="8.4.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog" Version="4.0.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
     <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />

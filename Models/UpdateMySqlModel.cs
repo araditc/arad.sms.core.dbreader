@@ -22,6 +22,6 @@ namespace Arad.SMS.Core.DbReader.Models;
 public class UpdateDBModel
 {
     public string TrackingCode { get; set; }
-    public string Status { get; set; }
+    public Enums.DeliveryStatus Status { get; set; }
     public string DeliveredAt { get; set; }
 }

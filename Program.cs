@@ -17,15 +17,18 @@
 //  --------------------------------------------------------------------
 
 using System.Reflection;
+
 using Arad.SMS.Core.DbReader.Models;
+
 using Serilog;
 
 namespace Arad.SMS.Core.DbReader;
 
 public class Program
 {
-    public static readonly LogConfig _logConfig = new();
-    public static IConfiguration Configuration { get; set; }
+    public static readonly LogConfig LogConfig = new();
+
+    public static IConfiguration? Configuration { get; set; }
 
     public static void Main(string[] args)
     {
@@ -35,23 +38,21 @@ public class Program
     public static IHostBuilder CreateHostBuilder(string[] args)
     {
         return Host.CreateDefaultBuilder(args)
-            .ConfigureAppConfiguration(config => config.AddUserSecrets(Assembly.GetExecutingAssembly()))
-            .ConfigureServices((hostContext, services) =>
-            {
-                Configuration = hostContext.Configuration;
-                Configuration.Bind("LogConfig", _logConfig);
+                   .ConfigureAppConfiguration(config => config.AddUserSecrets(Assembly.GetExecutingAssembly()))
+                   .ConfigureServices((hostContext, services) =>
+                                      {
+                                          Configuration = hostContext.Configuration;
+                                          Configuration.Bind("LogConfig", LogConfig);
 
-                services.AddHttpClient();
+                                          services.AddHttpClient();
 
-                services.AddHostedService<Worker>();
-            })
-            .UseWindowsService()
-            .UseSerilog((_, _, configuration) => configuration.WriteTo.File(
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, _logConfig.LogFileAddressDirectory,
-                    _logConfig.LogFileName),
-                rollingInterval: RollingInterval.Day,
-                rollOnFileSizeLimit: true,
-                fileSizeLimitBytes: _logConfig.FileSizeLimit)
-            );
+                                          services.AddHostedService<Worker>();
+                                      })
+                   .UseWindowsService()
+                   .UseSerilog((_, _, configuration) => configuration.WriteTo.File(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, LogConfig.LogFileAddressDirectory, LogConfig.LogFileName),
+                                                                                   rollingInterval: RollingInterval.Day,
+                                                                                   rollOnFileSizeLimit: true,
+                                                                                   fileSizeLimitBytes: LogConfig.FileSizeLimit)
+                   );
     }
 }

@@ -21,8 +21,8 @@ namespace Arad.SMS.Core.DbReader.Models;
 
 public class DlrDto
 {
-    public string Status { get; set; }
-    public string PartNumber { get; set; }
+    public Enums.DeliveryStatus Status { get; set; }
+    public int PartNumber { get; set; }
     public string MessageId { get; set; }
     public string DateTime { get; set; }
     public string Mobile { get; set; }
