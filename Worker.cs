@@ -899,12 +899,12 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             Stopwatch sw1 = new();
             Stopwatch sw2 = new();
             sw1.Start();
-            HttpResponseMessage response = await client.PostAsync(Url.Combine(_smsEndPointBaseAddress, $"api/message/send?returnLongId={_returnLongId}"), content);
+            HttpResponseMessage response = await client.PostAsync(Url.Combine(_smsEndPointBaseAddress, $"api/3/message/send?returnLongId={_returnLongId}"), content);
             Log.Information(JsonConvert.SerializeObject(response));
 
             if (response.StatusCode == HttpStatusCode.OK)
             {
-                ResultApiClass<List<string>>? batchIds = JsonConvert.DeserializeObject<ResultApiClass<List<string>>>(await response.Content.ReadAsStringAsync());
+                ResultApiClass<List<KeyValuePair<string, string>>>? batchIds = JsonConvert.DeserializeObject<ResultApiClass<List<KeyValuePair<string, string>>>>(await response.Content.ReadAsStringAsync());
                 sw1.Stop();
 
                 if (ids.Count > 0)
@@ -915,9 +915,10 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                         string sentDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
                         string command = batchIds.Data.Select((d, index) => string.Format(_updateQueryAfterSend,
-                                                                                          d.Length > 4 ? _statusForSuccessSend : _statusForFailedSend,
+                                                                                          d.Key.Length > 4 ? _statusForSuccessSend : _statusForFailedSend,
                                                                                           sentDate,
-                                                                                          d,
+                                                                                          d.Key,
+                                                                                          d.Value,
                                                                                           ids[index]))
                                                  .Aggregate("", (current, newComm) => current + newComm);
 
