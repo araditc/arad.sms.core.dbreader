@@ -489,7 +489,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     sw3.Start();
                     UpdateDbForDlr(updateList, initialList);
                     sw3.Stop();
-                    Log.Information($"DLR - Read from Queue time: {sw1.ElapsedMilliseconds}\t Create update list: {sw2.ElapsedMilliseconds}\t Update list count: {updateList.Count}\t MySQL update time: {sw3.ElapsedMilliseconds}");
+                    Log.Information($"DLR - Read from Queue time: {sw1.ElapsedMilliseconds}\t Create update list: {sw2.ElapsedMilliseconds}\t Update list count: {updateList.Count}\t update time: {sw3.ElapsedMilliseconds}");
                 }
             }
         }
@@ -516,7 +516,9 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     string cmm = string.Empty;
                     cn.Open();
                     string command = _updateQueryForDelivery;
-                    cmm = updateList.Select(item => string.Format(command, item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(cmm, (current, newCommand) => current + newCommand);
+                    cmm = updateList.Select(item => string.Format(command, (int)item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(cmm, (current, newCommand) => current + newCommand);
+                    
+                    Log.Error($"cmm: {cmm}");
                     await using SqlCommand cm = new(cmm, cn);
                     cm.CommandType = CommandType.Text;
                     await cm.ExecuteNonQueryAsync();
@@ -900,7 +902,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             Stopwatch sw2 = new();
             sw1.Start();
             HttpResponseMessage response = await client.PostAsync(Url.Combine(_smsEndPointBaseAddress, $"api/3/message/send?returnLongId={_returnLongId}"), content);
-            Log.Information(JsonConvert.SerializeObject(response));
+
 
             if (response.StatusCode == HttpStatusCode.OK)
             {
@@ -1061,7 +1063,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
                             if (dataTable.Rows.Count > 0)
                             {
-                                List<string> ids = dataTable.AsEnumerable().Select(m => m[0].ToString()).ToList();
+                                List<string> ids = dataTable.AsEnumerable().Select(m => m[0].ToString()).ToList()!;
                                 HttpResponseMessage response = await SetResult(ids);
 
                                 if (response.StatusCode == HttpStatusCode.Unauthorized)
@@ -1082,6 +1084,8 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                 {
                                     ResultApiClass<List<DlrStatus>>? resultApi = JsonConvert.DeserializeObject<ResultApiClass<List<DlrStatus>>>(await response.Content.ReadAsStringAsync());
                                     List<DlrStatus> statusList = resultApi.Data;
+
+                                    Log.Information($"statusList: {JsonConvert.SerializeObject(statusList)}");
 
                                     for (int i = 0; i < dataTable.Rows.Count; i++)
                                     {
@@ -1107,12 +1111,18 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                         }
                                     }
 
-                                    Log.Information($"start get dlr. count: {dataTable.Rows.Count}");
+                                    Log.Information($"start get dlr. count: {dataTable.Rows.Count} - {DlrEntranceQueue.Count}");
+                                }
+                                else if (response.StatusCode == HttpStatusCode.NotFound)
+                                {
+                                    Log.Information($"get dlr not found delivery for ids : {JsonConvert.SerializeObject(ids)}");
+                                    hasRow = false;
                                 }
                                 else
                                 {
                                     Log.Information($"get dlr - api call error : {JsonConvert.SerializeObject(response)}");
                                     Log.Information($"get dlr - ids : {JsonConvert.SerializeObject(ids)}");
+                                    hasRow = false;
                                 }
                             }
                             else
@@ -1284,6 +1294,13 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 _moFlag = true;
                 Log.Information($"get mo push response status :{response.StatusCode}");
 
+                return;
+            }
+            
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _moFlag = true;
+                Log.Information("get mo not found item");
                 return;
             }
 
