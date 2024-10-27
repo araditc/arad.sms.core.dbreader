@@ -814,7 +814,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     
                     Stopwatch waitingForSendStopwatch = Stopwatch.StartNew();
 
-                    string command = string.Format(_updateQueryBeforeSend, string.Join(",", ids));
+                    string command = string.Format(_updateQueryBeforeSend, string.Join(",", updateIds));
                     switch (_dbProvider)
                     {
                         case "SQL":
