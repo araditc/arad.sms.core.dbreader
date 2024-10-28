@@ -17,12 +17,21 @@
 //  --------------------------------------------------------------------
 
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
-public class ResultApiClass<TClass> where TClass : class
+/// <summary>
+/// Indicates the encoding scheme of the short message.
+/// </summary>
+[Flags]
+public enum DataCodings : byte
 {
-    public string Message { get; set; }
-    public bool Succeeded { get; set; }
-    public TClass Data { get; set; }
-    public Enums.ApiResponse ResultCode { get; set; }
+    /// <summary>
+    /// SMSC Default Alphabet (GSM 7 bit) (0x0)
+    /// </summary>
+    Default = 0x0,
+ 
+    /// <summary>
+    /// UCS2 (ISO/IEC-10646) (0x8)
+    /// </summary>
+    Ucs2 = 0x8
 }

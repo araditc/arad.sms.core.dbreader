@@ -1,0 +1,53 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<AssemblyName>Arad.SMS.Core.DbReader</AssemblyName>
+		<RootNamespace>Arad.SMS.Core.DbReader</RootNamespace>
+		<Version>3.24.10</Version>
+		<Copyright>Copyright (c) $([System.DateTime]::Now.Year) Arad ITC</Copyright>
+		<Company>Arad ITC</Company>
+		<Authors>Ammar Heidari</Authors>
+		<Description>SQL/MySQL Reader for DB Proxy</Description>
+		<PackageTags>sql,mysql, db-reader,messaging,sms, delivery, mo</PackageTags>
+		<PackageProjectUrl>https://github.com/araditc/arad.sms.core.dbreader</PackageProjectUrl>
+		<PackageLicenseUrl>https://github.com/araditc/arad.sms.core.dbreader/-/blob/master/LICENSE</PackageLicenseUrl>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/araditc/arad.sms.core.dbreader</RepositoryUrl>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="8.0.1" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+		<PackageReference Include="Flurl.Http" Version="4.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+		<PackageReference Include="MySql.Data" Version="9.1.0" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+		<PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+		<PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Update="appsettings*.json" CopyToPublishDirectory="Never" />
+		<Content Update="*.xml" CopyToPublishDirectory="Never" />
+		<Content Update="web.config" CopyToPublishDirectory="Never" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Update="README.md">
+	    <PackagePath>\</PackagePath>
+	    <Pack>True</Pack>
+	  </None>
+	</ItemGroup>
+
+	<PropertyGroup Condition="'$(Configuration)'=='Release'">
+		<DebugSymbols>False</DebugSymbols>
+		<DebugType>None</DebugType>
+	</PropertyGroup>
+
+</Project>

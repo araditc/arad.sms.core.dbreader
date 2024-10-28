@@ -16,15 +16,15 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
-namespace Arad.SMS.Core.DbReader.Models;
-
-public class DlrDto
+public class ResultApiClass<TClass> where TClass : class
 {
-    public Enums.DeliveryStatus Status { get; set; }
-    public int PartNumber { get; set; }
-    public string MessageId { get; set; }
-    public string DateTime { get; set; }
-    public string Mobile { get; set; }
-    public bool FullDelivery { get; set; }
+    public string Message { get; set; }
+
+    public bool Succeeded { get; set; }
+
+    public TClass Data { get; set; }
+
+    public ApiResponse ResultCode { get; set; }
 }

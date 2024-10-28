@@ -16,12 +16,13 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
-
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 public class TokenResponseModel
 {
-    public string AccessToken { get; set; }
+    public string AccessToken { get; set; } = null!;
+
     public DateTime ExpiresAt { get; set; }
-    public string Scope { get; set; }
+
+    public string Scope { get; set; } = null!;
 }

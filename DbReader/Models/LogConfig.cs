@@ -17,11 +17,15 @@
 //  --------------------------------------------------------------------
 
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
-public class UpdateDBModel
+public class LogConfig
 {
-    public string TrackingCode { get; set; }
-    public Enums.DeliveryStatus Status { get; set; }
-    public string DeliveredAt { get; set; }
+    public string LogFileAddressDirectory { get; set; } = null!;
+
+    public string LogFileName { get; set; } = null!;
+
+    public int FileSizeLimit { get; set; } = 10000000;
+
+    public int RetainedFileCountLimit { get; set; } = 1500;
 }

@@ -16,18 +16,42 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
-namespace Arad.SMS.Core.DbReader.Models;
-
-public class DlrStatus
+public class DlrDto
 {
-    public string Id { get; set; }
+    public DeliveryStatus Status { get; set; }
 
-    public List<Tuple<int, Enums.DeliveryStatus, DateTime?>> PartStatus { get; set; }
+    public int PartNumber { get; set; }
 
-    public Enums.DeliveryStatus DeliveryStatus { get; set; }
+    public string MessageId { get; set; }
 
-    public DateTime? DeliveryDate { get; set; }
+    public string DateTime { get; set; }
 
-    public string Udh { get; set; }
+    public string Mobile { get; set; }
+
+    public bool FullDelivery { get; set; }
+}
+
+public class DeliveryRelayModel
+{
+    public string Status { get; set; }
+
+    public string PartNumber { get; set; }
+
+    public string MessageId { get; set; }
+
+    public string DateTime { get; set; }
+
+    public string Mobile { get; set; }
+
+    public string UserName { get; set; }
+
+    public bool FullDelivery { get; set; }
+
+    public string SenderId { get; set; }
+
+    public string UDH { get; set; }
+
+    public string ErrorCode { get; set; }
 }

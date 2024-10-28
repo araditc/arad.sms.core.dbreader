@@ -17,13 +17,17 @@
 //  --------------------------------------------------------------------
 
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
-public class LogConfig
+public class DlrStatus
 {
-    public string LogFileAddressDirectory { get; set; }
+    public string Id { get; set; }
 
-    public string LogFileName { get; set; }
+    public List<Tuple<int, DeliveryStatus, DateTime?>> PartStatus { get; set; } = [];
 
-    public int FileSizeLimit { get; set; } = 10000000;
+    public DeliveryStatus DeliveryStatus { get; set; }
+
+    public DateTime? DeliveryDate { get; set; }
+
+    public string Udh { get; set; }
 }

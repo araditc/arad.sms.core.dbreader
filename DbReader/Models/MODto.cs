@@ -16,22 +16,19 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
-namespace Arad.SMS.Core.DbReader.Models;
-
-/// <summary>
-/// Indicates the encoding scheme of the short message.
-/// </summary>
-[Flags]
-public enum DataCodings : byte
+public class MoDto
 {
-    /// <summary>
-    /// SMSC Default Alphabet (GSM 7 bit) (0x0)
-    /// </summary>
-    Default = 0x0,
- 
-    /// <summary>
-    /// UCS2 (ISO/IEC-10646) (0x8)
-    /// </summary>
-    Ucs2 = 0x8
+    public string Id { get; set; }
+
+    public string SourceAddress { get; set; }
+
+    public string DestinationAddress { get; set; }
+
+    public string MessageText { get; set; }
+
+    public DateTime ReceiveDateTime { get; set; }
+
+    public bool IsRead { get; set; }
 }
