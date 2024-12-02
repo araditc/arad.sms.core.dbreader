@@ -77,7 +77,7 @@ public class HookController : Controller
                 updateList.AddRange(initialList.Select(dto => new UpdateDbModel { Status = dto.Status, TrackingCode = dto.MessageId, DeliveredAt = Convert.ToDateTime(dto.DateTime).ToString("yyyy-MM-dd HH:mm:ss") }));
                 sw2.Stop();
                 sw3.Start();
-                Worker.UpdateDbForDlr(updateList, initialList);
+                Worker.UpdateDbForDlr(updateList);
                 sw3.Stop();
                 Log.Information($"DLR - Create update list: {sw2.ElapsedMilliseconds}\t Update list count: {updateList.Count}\t update time: {sw3.ElapsedMilliseconds}");
             }

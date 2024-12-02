@@ -448,7 +448,6 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         _errorCountFlag = false;
         string[] dest = RuntimeSettings.DestinationAddress.Split(',');
         List<MessageDto> listToSend = [];
-        List<MessageList> keepData = [];
 
         listToSend.AddRange(dest.Select(item => new MessageDto
                                                 {
@@ -460,12 +459,12 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                                     MessageText = messageText + $"{Environment.NewLine}زمان : {DateTime.Now}"
                                                 }));
 
-        await SendAlert(listToSend, keepData);
+        await SendAlert(listToSend);
         _errorCount = isError ? 0 : _errorCount;
         _errorCountFlag = true;
     }
 
-    private async Task SendAlert(List<MessageDto> listToSend, List<MessageList> keepData)
+    private async Task SendAlert(List<MessageDto> listToSend)
     {
         try
         {
@@ -502,7 +501,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 if (!RuntimeSettings.UseApiKey)
                 {
                     Thread.Sleep(1000);
-                    await ReSendAlert(listToSend, keepData);
+                    await SendAlert(listToSend);
                 }
             }
             else
@@ -517,13 +516,8 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             Log.Error(e.Message);
         }
     }
-
-    private async Task ReSendAlert(List<MessageDto> listToSend, List<MessageList> keepData)
-    {
-        await SendAlert(listToSend, keepData);
-    }
-
-    public static async void UpdateDbForDlr(List<UpdateDbModel> updateList, List<DlrDto> initialList)
+    
+    public static async void UpdateDbForDlr(List<UpdateDbModel> updateList)
     {
         string cmm = string.Empty;
         switch (RuntimeSettings.DbProvider)
@@ -593,7 +587,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 try
                 {
                     cn.Open();
-                    cmm = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, Convert.ToDateTime(item.ReceiveDateTime).ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText))
+                    cmm = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, item.ReceiveDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText))
                               .Aggregate(cmm, (current, newCommand) => current + newCommand);
 
                     await using SqlCommand cm = new(cmm, cn);
@@ -620,7 +614,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 try
                 {
                     cn.Open();
-                    cmm = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, Convert.ToDateTime(item.ReceiveDateTime).ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText))
+                    cmm = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, item.ReceiveDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText))
                               .Aggregate(cmm, (current, newCommand) => current + newCommand);
 
                     await using MySqlCommand cm = new(cmm, cn) { CommandType = CommandType.Text };
@@ -845,8 +839,9 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             {
                 if (ids.Count > 0)
                 {
+                    RuntimeSettings.FullLog.OptionalLog($"response content : {await response.Content.ReadAsStringAsync()}");
+                    RuntimeSettings.FullLog.OptionalLog($"ids : {JsonConvert.SerializeObject(ids)}");
 	                string command = string.Empty;
-	                string apiResponse = string.Empty;
 
 	                switch (RuntimeSettings.ApiVersion)
 	                {
@@ -862,8 +857,6 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                                                                             d.UpstreamGateway, //UpstreamName
                                                                                             ids[index])) //Id
 			                                   .Aggregate("", (current, newComm) => current + newComm);
-
-			                apiResponse = JsonConvert.SerializeObject(batchIds);
 			                break;
 		                }
 
@@ -879,8 +872,6 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                                                                         ids[index])) //Id
 			                                   .Aggregate("", (current, newComm) => current + newComm);
 
-			                apiResponse = JsonConvert.SerializeObject(batchIds);
-
 			                break;
 		                }
 
@@ -894,9 +885,6 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                                                                         d, // ReturnID
                                                                                         ids[index])) //Id
 			                                   .Aggregate("", (current, newComm) => current + newComm);
-
-			                apiResponse = JsonConvert.SerializeObject(batchIds);
-
 			                break;
 		                }
 	                }
@@ -945,7 +933,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     {
                         _errorCount++;
                         _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                        Log.Error($"Error in Update: {e.Message} - \n {apiResponse}");
+                        Log.Error($"Error in Update: {e.Message}");
                     }
                 }
                 Log.Information($"TaskId: {tId}\tSend time: {sw1.ElapsedMilliseconds}\t count:{listToSend.Count}\t Update count:{ids.Count}\tUpdate time:{sw2.ElapsedMilliseconds}");
@@ -1182,7 +1170,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                         updateList.AddRange(initialList.Select(dto => new UpdateDbModel { Status = dto.Status, TrackingCode = dto.MessageId, DeliveredAt = Convert.ToDateTime(dto.DateTime).ToString("yyyy-MM-dd HH:mm:ss") }));
                         sw2.Stop();
                         sw3.Start();
-                        UpdateDbForDlr(updateList, initialList);
+                        UpdateDbForDlr(updateList);
                         sw3.Stop();
                         Log.Information($"DLR - Api call time: {sw1.ElapsedMilliseconds}\t Create update list: {sw2.ElapsedMilliseconds}\t Update list count: {updateList.Count}\t update time: {sw3.ElapsedMilliseconds}");
                     }
@@ -1235,6 +1223,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 }
 
                 HttpResponseMessage response = await client.GetAsync(Url.Combine(RuntimeSettings.SmsEndPointBaseAddress, "api/message/GetMO?returnId=true"));
+                RuntimeSettings.FullLog.OptionalLog($"{JsonConvert.SerializeObject(await response.Content.ReadAsStringAsync())}");
                 sw1.Stop();
 
                 if (response.StatusCode == HttpStatusCode.NotFound)
@@ -1244,7 +1233,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     continue;
                 }
 
-                if (response.StatusCode != HttpStatusCode.Unauthorized)
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
                     if (!RuntimeSettings.UseApiKey)
                     {
@@ -1289,6 +1278,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                         Log.Information($"MO - Api call time: {sw1.ElapsedMilliseconds}\t Create list: {sw2.ElapsedMilliseconds}\t list count: {list.Count}\t Insert time: {sw3.ElapsedMilliseconds}");
                     }
                 }
+                await Task.Delay(1000);
             }
             catch (Exception ex)
             {
