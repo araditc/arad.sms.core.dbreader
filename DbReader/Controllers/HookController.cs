@@ -2,18 +2,19 @@
 using System.Diagnostics;
 using System.Web;
 
-using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
+using Arad.SMS.Core.DbReader.Models;
+using Arad.SMS.Core.DbReader.Services;
 
 using Microsoft.AspNetCore.Mvc;
 
 using Serilog;
 
-namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Controllers;
+namespace Arad.SMS.Core.DbReader.Controllers;
 
 public class HookController : Controller
 {
     [HttpGet("GetMO")]
-    public ActionResult GetMo()
+    public ActionResult GetMo(CancellationToken token)
     {
         try
         {
@@ -34,7 +35,7 @@ public class HookController : Controller
             [
                 new() { MessageText = text, SourceAddress = from, DestinationAddress = dest, ReceiveDateTime = DateTime.Now }
             ];
-            Worker.InsertInboxAsync(inboxSaveQueues);
+            Worker.InsertInboxAsync(inboxSaveQueues, token);
         }
         catch (Exception ex)
         {
@@ -47,7 +48,7 @@ public class HookController : Controller
     }
 
     [HttpPost("GetDLR")]
-    public ActionResult GetDLR([FromBody] List<DeliveryRelayModel> models)
+    public ActionResult GetDLR([FromBody] List<DeliveryRelayModel> models, CancellationToken token)
     {
         try
         {
@@ -77,7 +78,7 @@ public class HookController : Controller
                 updateList.AddRange(initialList.Select(dto => new UpdateDbModel { Status = dto.Status, TrackingCode = dto.MessageId, DeliveredAt = Convert.ToDateTime(dto.DateTime).ToString("yyyy-MM-dd HH:mm:ss") }));
                 sw2.Stop();
                 sw3.Start();
-                Worker.UpdateDbForDlr(updateList);
+                Worker.UpdateDbForDlr(updateList, token);
                 sw3.Stop();
                 Log.Information($"DLR - Create update list: {sw2.ElapsedMilliseconds}\t Update list count: {updateList.Count}\t update time: {sw3.ElapsedMilliseconds}");
             }

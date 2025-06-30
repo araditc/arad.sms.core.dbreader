@@ -1,8 +1,11 @@
 using System.Net;
 
-using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader;
-using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
+using Arad.SMS.Core.DbReader;
+using Arad.SMS.Core.DbReader.Authentication;
+using Arad.SMS.Core.DbReader.Models;
+using Arad.SMS.Core.DbReader.Services;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 using Serilog;
@@ -11,13 +14,12 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHttpClient();
 
-builder.Services.AddHostedService<Worker>();
-
 RuntimeSettings.Configuration = builder.Configuration;
 
-_ = new Timer(RuntimeSettings.LoadSetting, null, 60 * 1000, 60 * 1000);
+builder.Services.AddHostedService<TimedWorker>();
+builder.Services.AddHostedService<Worker>();
 
-builder.WebHost.UseUrls($"http//{(builder.Configuration["URLSetting:IP"] ?? "127.0.0.1")}:{builder.Configuration["URLSetting:Port"] ?? "8888"}");
+builder.WebHost.UseUrls($"http//{builder.Configuration["URLSetting:IP"] ?? "127.0.0.1"}:{builder.Configuration["URLSetting:Port"] ?? "8888"}");
 
 builder.WebHost.ConfigureKestrel(options =>
                                  {
@@ -29,8 +31,6 @@ builder.WebHost.ConfigureKestrel(options =>
                                                     });
                                  });
 
-
-
 builder.Services.AddWindowsService();
 builder.Services.AddSystemd();
 builder.Services.AddControllers();
@@ -40,6 +40,8 @@ builder.Services.AddSwaggerGen();
 
 LogConfig logConfig = new();
 builder.Configuration.Bind("LogConfig", logConfig);
+
+builder.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>("ApiKey", _ => { });
 
 builder.Host.UseSerilog((_, loggerConfiguration) => loggerConfiguration.MinimumLevel.Information()
                                                                        .WriteTo.File(logConfig.LogFileAddressDirectory,
@@ -54,5 +56,7 @@ WebApplication app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 app.MapControllers();
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.Run();
+await app.RunAsync();

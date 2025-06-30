@@ -1,4 +1,4 @@
-﻿namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader;
+﻿namespace Arad.SMS.Core.DbReader;
 
 public static class RuntimeSettings
 {
@@ -27,6 +27,8 @@ public static class RuntimeSettings
     public static bool EnableGetDlr { get; set; } = true;
 
     public static bool EnableGetMo { get; set; } = true;
+
+    public static bool SendToWhiteList { get; set; }
 
     public static bool EnableSend { get; set; } = true;
 
@@ -81,6 +83,12 @@ public static class RuntimeSettings
     public static string UpdateQueryForOutgoing { get; set; } = string.Empty;
 
     public static string StatusForStored { get; set; } = string.Empty;
+
+    public static string SelectQueryWhiteList { get; set; } = string.Empty;
+
+    public static string InsertQueryForOutbox { get; set; } = string.Empty;
+
+    public static string SelectDeliveryQuery { get; set; } = string.Empty;
     
     public static IConfiguration? Configuration { get; set; }
 
@@ -92,19 +100,23 @@ public static class RuntimeSettings
 
     public static int ArchiveBatchSize { get; set; }
 
-    public static string? SelectQueryForArchive { get; set; }
+    public static string OutboxTableName { get; set; } = string.Empty;
 
-    public static string? InsertQueryForArchive { get; set; }
+    public static string SelectQueryForArchive { get; set; } = string.Empty;
 
-    public static string? DeleteQueryAfterArchive { get; set; }
+    public static string InsertQueryForArchive { get; set; } = string.Empty;
 
-    public static string? DeleteQueryForDuplicateRecords { get; set; }
+    public static string DeleteQueryAfterArchive { get; set; } = string.Empty;
 
-    public static void LoadSetting(object? stateInfo)
+    public static string DeleteQueryForDuplicateRecords { get; set; } = string.Empty;
+
+    public static string SendApiKey { get; set; } = string.Empty;
+
+    public static Task LoadSetting(CancellationToken cancellationToken)
     {
         if (Configuration == null)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         ServiceName = Configuration["ServiceName"] ?? "";
@@ -113,6 +125,7 @@ public static class RuntimeSettings
         MOIntervalTime = Convert.ToInt32(Configuration["Message:MOInterval"]);
         Tps = Convert.ToInt32(Configuration["Message:TPS"]);
         EnableSend = Convert.ToBoolean(Configuration["Message:EnableSend"]);
+        SendToWhiteList = Convert.ToBoolean(Configuration["Message:SendToWhiteList"]);
         EnableGetDlr = Convert.ToBoolean(Configuration["Message:EnableGetDLR"]);
         EnableGetMo = Convert.ToBoolean(Configuration["Message:EnableGetMO"]);
         DbProvider = Configuration["DB:Provider"] ?? "";
@@ -136,6 +149,11 @@ public static class RuntimeSettings
         InsertQueryForArchive = Configuration["DB:InsertQueryForArchive"] ?? "";
         DeleteQueryAfterArchive = Configuration["DB:DeleteQueryAfterArchive"] ?? "";
         DeleteQueryForDuplicateRecords = Configuration["DB:DeleteQueryForDuplicateRecords"] ?? "";
+        SelectQueryWhiteList = Configuration["DB:SelectQueryWhiteList"] ?? "";
+        OutboxTableName = Configuration["DB:OutboxTableName"] ?? "";
+        InsertQueryForOutbox = Configuration["DB:InsertQueryForOutbox"] ?? "";
+        SelectDeliveryQuery = Configuration["DB:SelectDeliveryQuery"] ?? "";
+        SendApiKey = Configuration["URLSetting:SendApiKey"] ?? "";
 
         #region API Setting
         UserName = Configuration["SmsEndPointConfig:UserName"] ?? "";
@@ -168,5 +186,6 @@ public static class RuntimeSettings
         #endregion
 
         FullLog = Convert.ToBoolean(Configuration["FullLog"]);
+        return Task.CompletedTask;
     }
 }
