@@ -1,3 +1,5 @@
+👉 [نسخه پارسی](https://github.com/araditc/arad.sms.core.dbreader/blob/master/README_FA.md)
+
 # Arad SMS Core DBReader
 
 ## Project Overview
