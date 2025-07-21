@@ -1,4 +1,4 @@
-👉 [English version](https://github.com/araditc/arad.sms.core.dbreader/blob/master/README_EN.md)
+👉 [English version](https://github.com/araditc/arad.sms.core.dbreader/blob/master/README.md)
 
 # مستندات پروژه arad.sms.core.dbreader
 
