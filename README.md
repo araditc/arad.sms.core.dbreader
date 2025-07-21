@@ -1,3 +1,5 @@
+👉 [English version](https://github.com/araditc/arad.sms.core.dbreader/blob/master/README_EN.md)
+
 # مستندات پروژه arad.sms.core.dbreader
 
 ## معرفی پروژه
