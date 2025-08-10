@@ -17,11 +17,11 @@
 //  --------------------------------------------------------------------
 
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 public class DlrStatus
 {
-    public string Id { get; set; }
+    public required string Id { get; set; }
 
     public List<Tuple<int, DeliveryStatus, DateTime?>> PartStatus { get; set; } = [];
 
@@ -29,5 +29,5 @@ public class DlrStatus
 
     public DateTime? DeliveryDate { get; set; }
 
-    public string Udh { get; set; }
+    public required string Udh { get; set; }
 }

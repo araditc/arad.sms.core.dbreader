@@ -1,18 +1,18 @@
 ﻿using System.Data;
 
-using Arad.SMS.Core.DbReader.Models;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 
-using MySql.Data.MySqlClient;
+using MySqlConnector;
 
 using Oracle.ManagedDataAccess.Client;
 
 using Serilog;
 
-namespace Arad.SMS.Core.DbReader.Controllers;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Controllers;
 
 [ApiController]
 [Authorize(AuthenticationSchemes = "ApiKey")]
@@ -66,9 +66,10 @@ public class MessageController : Controller
                 try
                 {
                     await cn.OpenAsync(token);
-                    await using MySqlCommand cm = new(cmm, cn) { CommandType = CommandType.Text };
+                    await using MySqlCommand cm = new(cmm, cn);
+                    cm.CommandType = CommandType.Text;
                     await cm.ExecuteNonQueryAsync(token);
-                    await cm.Connection.CloseAsync();
+                    await cm.Connection!.CloseAsync();
                     await cn.CloseAsync();
                 }
                 catch (Exception e)
@@ -146,9 +147,10 @@ public class MessageController : Controller
                 try
                 {
                     await cn.OpenAsync(token);
-                    await using MySqlCommand cm = new(cmm, cn) { CommandType = CommandType.Text };
+                    await using MySqlCommand cm = new(cmm, cn);
+                    cm.CommandType = CommandType.Text;
                     dt.Load(await cm.ExecuteReaderAsync(token));
-                    await cm.Connection.CloseAsync();
+                    await cm.Connection!.CloseAsync();
                     await cn.CloseAsync();
                 }
                 catch (Exception e)

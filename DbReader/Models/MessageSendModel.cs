@@ -16,7 +16,7 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 public class MessageList
 {
@@ -27,13 +27,13 @@ public class MessageList
 
 public class MessageSendModel
 {
-    public string Udh { get; set; }
+    public string Udh { get; set; } = string.Empty;
 
-    public string MessageText { get; set; }
+    public string MessageText { get; set; } = string.Empty;
 
-    public string SourceAddress { get; set; }
+    public string SourceAddress { get; set; } = string.Empty;
 
-    public string DestinationAddress { get; set; }
+    public string DestinationAddress { get; set; } = string.Empty;
 
     public int DataCoding { get; set; }
 

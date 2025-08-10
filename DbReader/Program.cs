@@ -1,9 +1,9 @@
 using System.Net;
 
-using Arad.SMS.Core.DbReader;
-using Arad.SMS.Core.DbReader.Authentication;
-using Arad.SMS.Core.DbReader.Models;
-using Arad.SMS.Core.DbReader.Services;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Authentication;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Services;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Server.Kestrel.Core;

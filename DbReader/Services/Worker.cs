@@ -16,6 +16,13 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
+using Flurl;
+using Microsoft.Data.SqlClient;
+using MySqlConnector;
+using Newtonsoft.Json;
+using Oracle.ManagedDataAccess.Client;
+using Serilog;
 using System.Data;
 using System.Diagnostics;
 using System.Globalization;
@@ -25,23 +32,7 @@ using System.Net.Mime;
 using System.Text;
 using System.Text.RegularExpressions;
 
-using Arad.SMS.Core.DbReader.Models;
-
-using Flurl;
-
-using Microsoft.Data.SqlClient;
-
-using MySql.Data.MySqlClient;
-
-using Newtonsoft.Json;
-
-using Oracle.ManagedDataAccess.Client;
-
-using Serilog;
-
-using JsonSerializer = System.Text.Json.JsonSerializer;
-
-namespace Arad.SMS.Core.DbReader.Services;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Services;
 
 public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 {
@@ -108,7 +99,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
     
     private async Task RunJobLoop(ScheduledJob job, CancellationToken token)
     {
-        Log.Information($"Started job : {job.Name}");
+        Log.Information("Started job : {JobName}", job.Name);
 
         while (!token.IsCancellationRequested)
         {
@@ -134,7 +125,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     }
 
                     TimeSpan delay = nextRunTime - now;
-                    Log.Information($"Delaying {job.Name} until aligned time: {nextRunTime}");
+                    Log.Information("Delaying {JobName} until aligned time: {NextRunTime}", job.Name, nextRunTime);
                     await Task.Delay(delay, token);
                 }
                 
@@ -150,18 +141,18 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             }
             catch (OperationCanceledException)
             {
-                Log.Error($"{job.Name} canceled.");
+                Log.Error("{JobName} canceled.", job.Name);
                 break;
             }
             catch (Exception ex)
             {
                 failureCount++;
-                Log.Information(ex, $"Error in job {job.Name} (failure #{failureCount})");
+                Log.Information(ex, "Error in job {JobName} (failure #{FailureCount})", job.Name, failureCount);
 
                 if (failureCount >= maxFailures)
                 {
-                    failureCount = 0;//TODO
-                    Log.Error($"Job {job.Name} failed {failureCount} times. Triggering fallback/alerting and stopping.");
+                    //failureCount = 0;//TODO
+                    Log.Error("Job {JobName} failed {FailureCount} times. Triggering fallback/alerting and stopping.", job.Name, failureCount);
                     //await TriggerJobAlertAsync(job, ex, token);
                     
                     //break;
@@ -169,7 +160,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             }
         }
         
-        Log.Information($"Stopped job : {job.Name}");
+        Log.Information("Stopped job : {JobName}", job.Name);
     }
 
     private async void GetToken(CancellationToken token)
@@ -178,6 +169,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         {
             Log.Information("Start getting token");
             HttpClient client = clientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(3);
 
             HttpRequestMessage request = new(HttpMethod.Post, $"{RuntimeSettings.SmsEndPointBaseAddress}/connect/token");
             MultipartFormDataContent multipartContent = new();
@@ -190,11 +182,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
             TokenResponseModel? data = await response.Content.ReadFromJsonAsync<TokenResponseModel>(cancellationToken: token);
             _accessToken = data?.AccessToken!;
-            Log.Information($"Token: {_accessToken}");
+            Log.Information("Token: {AccessToken}", _accessToken);
         }
         catch (Exception e)
         {
-            Log.Error($"Error in getting token: {e.Message}");
+            Log.Error("Error in getting token: {EMessage}", e.Message);
         }
     }
     
@@ -222,7 +214,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
             await using (MySqlCommand cm = new(string.Format(RuntimeSettings.SelectQueryForArchive, RuntimeSettings.ArchiveBatchSize), cn))
             {
-                dt.Load(cm.ExecuteReader());
+                dt.Load(await cm.ExecuteReaderAsync(token));
             }
 
             sw1.Stop();
@@ -251,9 +243,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await using MySqlConnection con = new(RuntimeSettings.ConnectionString);
                     await con.OpenAsync(token);
                     string command = string.Format(RuntimeSettings.InsertQueryForArchive, archiveTableName, ids);
-                    await using MySqlCommand cm = new(command, con) { CommandType = CommandType.Text };
+                    await using MySqlCommand cm = new(command, con);
+                    cm.CommandType = CommandType.Text;
+                    cm.CommandTimeout = 120;
                     await cm.ExecuteNonQueryAsync(token);
-                    await cm.Connection.CloseAsync();
+                    await cm.Connection!.CloseAsync();
                     await con.CloseAsync();
                     sw3.Stop();
                     sw4.Start();
@@ -261,9 +255,10 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await using MySqlConnection conn = new(RuntimeSettings.ConnectionString);
                     await conn.OpenAsync(token);
                     string deleteCommand = string.Format(RuntimeSettings.DeleteQueryAfterArchive, ids);
-                    await using MySqlCommand dlCommand = new(deleteCommand, conn) { CommandType = CommandType.Text };
+                    await using MySqlCommand dlCommand = new(deleteCommand, conn);
+                    dlCommand.CommandType = CommandType.Text;
                     await dlCommand.ExecuteNonQueryAsync(token);
-                    await dlCommand.Connection.CloseAsync();
+                    await dlCommand.Connection!.CloseAsync();
                     sw4.Stop();
 
                     await conn.CloseAsync();
@@ -279,11 +274,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             dt.Dispose();
             _errorCount++;
             _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-            Log.Error($"Error in archive: {e.Message}");
+            Log.Error("Error in archive: {EMessage}", e.Message);
 
             if (e.Message.Contains("Duplicate entry"))
             {
-                Log.Information($"Trying to remove duplicate entry: {DateTime.Now}");
+                Log.Information("Trying to remove duplicate entry: {DateTime}", DateTime.Now);
 
                 await using (MySqlConnection con = new(RuntimeSettings.ConnectionString))
                 {
@@ -297,7 +292,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await con.CloseAsync();
                 }
 
-                Log.Error($"Duplicate entry removed at: {DateTime.Now}");
+                Log.Error("Duplicate entry removed at: {DateTime}", DateTime.Now);
             }
         }
     }
@@ -322,7 +317,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
             await using (MySqlCommand command = new(query, connection))
             {
-                await using (MySqlDataReader reader = command.ExecuteReader())
+                await using (MySqlDataReader reader = await command.ExecuteReaderAsync(token))
                 {
                     if (await reader.ReadAsync(token))
                     {
@@ -339,7 +334,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 // اجرای اسکریپت برای ایجاد جدول جدید
                 await using MySqlCommand createCommand = new(createTableScript, connection);
                 await createCommand.ExecuteNonQueryAsync(token);
-                Log.Error($"Table '{archiveTableName}' created successfully!");
+                Log.Error("Table '{ArchiveTableName}' created successfully!", archiveTableName);
             }
             else
             {
@@ -349,7 +344,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         }
         catch (Exception ex)
         {
-            Log.Error($"Error: {ex.Message}");
+            Log.Error("Error: {ExMessage}", ex.Message);
         }
 
         return archiveTableName;
@@ -370,7 +365,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         }
         catch (Exception ex)
         {
-            Log.Error($"Error: {ex.Message}");
+            Log.Error("Error: {ExMessage}", ex.Message);
         }
 
         return false;
@@ -401,6 +396,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     try
                     {
                         await using SqlCommand cm = new(command, cn);
+                        cm.CommandTimeout = 120;
                         dataTable.Load(await cm.ExecuteReaderAsync(token));
 
                         if (dataTable.Rows.Count > 0)
@@ -427,7 +423,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (CopyFromOutgoingToOutbound): {e.Message}");
+                        Log.Error("Error in read db (CopyFromOutgoingToOutbound): {EMessage}", e.Message);
                     }
                     finally
                     {
@@ -447,7 +443,8 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     {
 
                         await using MySqlCommand cm = new(command, mySqlConnection);
-                        dataTable.Load(cm.ExecuteReader());
+                        cm.CommandTimeout = 120;
+                        dataTable.Load(await cm.ExecuteReaderAsync(token));
 
                         if (dataTable.Rows.Count > 0)
                         {
@@ -477,7 +474,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (CopyFromOutgoingToOutbound): {e.Message}");
+                        Log.Error("Error in read db (CopyFromOutgoingToOutbound): {EMessage}", e.Message);
                         await sqlTransaction.RollbackAsync(token);
                     }
                     finally
@@ -498,6 +495,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     {
 
                         await using OracleCommand cm = new(command, oracleConnection);
+                        cm.CommandTimeout = 120;
                         dataTable.Load(await cm.ExecuteReaderAsync(token));
 
                         if (dataTable.Rows.Count > 0)
@@ -528,7 +526,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (CopyFromOutgoingToOutbound): {e.Message}");
+                        Log.Error("Error in read db (CopyFromOutgoingToOutbound): {EMessage}", e.Message);
                         await sqlTransaction.RollbackAsync(token);
                     }
                     finally
@@ -542,7 +540,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         }
         catch (Exception e)
         {
-            Log.Error($"Error CopyFromOutgoingToOutbound : {e.Message}");
+            Log.Error("Error CopyFromOutgoingToOutbound : {EMessage}", e.Message);
         }
     }
 
@@ -649,6 +647,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
             // Try sending Alerts
             HttpClient client = clientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(3);
 
             if (!RuntimeSettings.UseApiKey)
             {
@@ -677,7 +676,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             }
             else
             {
-                Log.Information($"status code: {response.StatusCode} message: {await response.Content.ReadAsStringAsync(token)}");
+                Log.Information("status code: {ResponseStatusCode} message: {ReadAsStringAsync}", response.StatusCode, await response.Content.ReadAsStringAsync(token));
             }
         }
         catch (Exception e)
@@ -701,8 +700,8 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 {
                     await cn.OpenAsync(cancellationToken);
                     cmm = updateList.Select(item => string.Format(RuntimeSettings.UpdateQueryForDelivery, (int)item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(cmm, (current, newCommand) => current + newCommand);
-                    Log.Error($"cmm: {cmm}");
                     await using SqlCommand cm = new(cmm, cn);
+                    cm.CommandTimeout = 120;
                     cm.CommandType = CommandType.Text;
                     await cm.ExecuteNonQueryAsync(cancellationToken);
                     await cm.Connection.CloseAsync();
@@ -713,7 +712,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await cn.CloseAsync();
                     _errorCount++;
                     _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error($"Error in Update. Error is: {e.Message}");
+                    Log.Error("Error in Update. Error is: {EMessage}", e.Message);
                 }
 
                 break;
@@ -727,9 +726,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 {
                     await cn.OpenAsync(cancellationToken);
                     cmm = updateList.Select(item => string.Format(RuntimeSettings.UpdateQueryForDelivery, item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(cmm, (current, newCommand) => current + newCommand);
-                    await using MySqlCommand cm = new(cmm, cn) { CommandType = CommandType.Text };
+                    await using MySqlCommand cm = new(cmm, cn);
+                    cm.CommandType = CommandType.Text;
+                    cm.CommandTimeout = 120;
                     await cm.ExecuteNonQueryAsync(cancellationToken);
-                    await cm.Connection.CloseAsync();
+                    await cm.Connection!.CloseAsync();
                     await cn.CloseAsync();
                 }
                 catch (Exception e)
@@ -737,7 +738,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await cn.CloseAsync();
                     _errorCount++;
                     _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error($"Error in Update. Error is: {e.Message}");
+                    Log.Error("Error in Update. Error is: {EMessage}", e.Message);
                 }
 
                 break;
@@ -752,6 +753,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await cn.OpenAsync(cancellationToken);
                     cmm = updateList.Select(item => string.Format(RuntimeSettings.UpdateQueryForDelivery, item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(cmm, (current, newCommand) => current + newCommand);
                     await using OracleCommand cm = new(cmm, cn);
+                    cm.CommandTimeout = 120;
                     cm.CommandType = CommandType.Text;
                     await cm.ExecuteNonQueryAsync(cancellationToken);
                     await cm.Connection.CloseAsync();
@@ -762,7 +764,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await cn.CloseAsync();
                     _errorCount++;
                     _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error($"Error in Update. Error is: {e.Message}");
+                    Log.Error("Error in Update. Error is: {EMessage}", e.Message);
                 }
 
                 break;
@@ -787,6 +789,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                               .Aggregate(cmm, (current, newCommand) => current + newCommand);
 
                     await using SqlCommand cm = new(cmm, cn);
+                    cm.CommandTimeout = 120;
                     cm.CommandType = CommandType.Text;
                     await cm.ExecuteNonQueryAsync(token);
                     cm.Connection.Close();
@@ -797,7 +800,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await cn.CloseAsync();
                     _errorCount++;
                     _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error($"Error in insert into inbound. Error is: {e.Message}");
+                    Log.Error("Error in insert into inbound. Error is: {EMessage}", e.Message);
                 }
 
                 break;
@@ -813,9 +816,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     cmm = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, item.ReceiveDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText))
                               .Aggregate(cmm, (current, newCommand) => current + newCommand);
 
-                    await using MySqlCommand cm = new(cmm, cn) { CommandType = CommandType.Text };
+                    await using MySqlCommand cm = new(cmm, cn);
+                    cm.CommandType = CommandType.Text;
+                    cm.CommandTimeout = 120;
                     await cm.ExecuteNonQueryAsync(token);
-                    await cm.Connection.CloseAsync();
+                    await cm.Connection!.CloseAsync();
                     await cn.CloseAsync();
                 }
                 catch (Exception e)
@@ -823,7 +828,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await cn.CloseAsync();
                     _errorCount++;
                     _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error($"Error in insert into inbound. Error is: {e.Message}");
+                    Log.Error("Error in insert into inbound. Error is: {EMessage}", e.Message);
                 }
 
                 break;
@@ -840,6 +845,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                               .Aggregate(cmm, (current, newCommand) => current + newCommand);
 
                     await using OracleCommand cm = new(cmm, cn);
+                    cm.CommandTimeout = 120;
                     cm.CommandType = CommandType.Text;
                     await cm.ExecuteNonQueryAsync(token);
                     await cm.Connection.CloseAsync();
@@ -850,7 +856,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     await cn.CloseAsync();
                     _errorCount++;
                     _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error($"Error in insert into inbound. Error is: {e.Message}");
+                    Log.Error("Error in insert into inbound. Error is: {EMessage}", e.Message);
                 }
 
                 break;
@@ -891,11 +897,12 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     try
                     {
                         await using SqlCommand cm = new(command, cn);
+                        cm.CommandTimeout = 120;
                         dt.Load(await cm.ExecuteReaderAsync(token));
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (selectQueryForSend): {command} {Environment.NewLine}  {e.Message}");
+                        Log.Error("Error in read db (selectQueryForSend): {Command} {NewLine}  {EMessage}", command, Environment.NewLine, e.Message);
                     }
                     finally
                     {
@@ -914,11 +921,12 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     try
                     {
                         await using MySqlCommand cm = new(command, cn);
+                        cm.CommandTimeout = 120;
                         dt.Load(await cm.ExecuteReaderAsync(token));
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (selectQueryForSend): {command} {Environment.NewLine} {e.Message}");
+                        Log.Error("Error in read db (selectQueryForSend): {Command} {NewLine} {EMessage}", command, Environment.NewLine, e.Message);
                     }
                     finally
                     {
@@ -937,11 +945,12 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     try
                     {
                         await using OracleCommand cm = new(command, cn);
+                        cm.CommandTimeout = 120;
                         dt.Load(await cm.ExecuteReaderAsync(token));
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (selectQueryForSend): {command} {Environment.NewLine} {e.Message}");
+                        Log.Error("Error in read db (selectQueryForSend): {Command} {NewLine} {EMessage}", command, Environment.NewLine, e.Message);
                     }
                     finally
                     {
@@ -1002,6 +1011,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
                                 await cn.OpenAsync(token);
                                 await using SqlCommand cm = new(whiteListCommand, cn);
+                                cm.CommandTimeout = 120;
                                 cm.CommandType = CommandType.Text;
                                 whiteListTable.Load(await cm.ExecuteReaderAsync(token));
                                 await cm.Connection.CloseAsync();
@@ -1015,9 +1025,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                 await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
 
                                 await cn.OpenAsync(token);
-                                await using MySqlCommand cm = new(whiteListCommand, cn) { CommandType = CommandType.Text };
+                                await using MySqlCommand cm = new(whiteListCommand, cn);
+                                cm.CommandType = CommandType.Text;
+                                cm.CommandTimeout = 120;
                                 whiteListTable.Load(await cm.ExecuteReaderAsync(token));
-                                await cm.Connection.CloseAsync();
+                                await cm.Connection!.CloseAsync();
                                 await cn.CloseAsync();
 
                                 break;
@@ -1029,6 +1041,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
                                 await cn.OpenAsync(token);
                                 await using OracleCommand cm = new(whiteListCommand, cn);
+                                cm.CommandTimeout = 120;
                                 cm.CommandType = CommandType.Text;
                                 whiteListTable.Load(await cm.ExecuteReaderAsync(token));
                                 await cm.Connection.CloseAsync();
@@ -1039,10 +1052,6 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                         }
 
                         List<string> whiteList = whiteListTable.Rows.Cast<DataRow>().Select(row => row["mobile"].ToString()).ToList()!;
-                        
-                        Log.Information($"======> whiteListCommand : {whiteListCommand}");
-                        Log.Information($"======> whiteListTable : {JsonSerializer.Serialize(whiteListTable.Rows.Count)}");
-                        Log.Information($"======> whiteList : {JsonSerializer.Serialize(whiteList)}");
 
                         List<MessageSendModel> tmpSend = [];
                         List<MessageSendModel> tmpReject = [];
@@ -1064,10 +1073,6 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                         {
                             await UpdateStatus(tmpReject.Select(r => r.Udh).ToList(), RuntimeSettings.StatusForFailedSend, token);
                         }
-                        
-                        Log.Information($"======> tmpReject : {JsonSerializer.Serialize(tmpReject)}");
-                        Log.Information($"======> tmpSend : {JsonSerializer.Serialize(tmpSend)}");
-                        Log.Information($"======> messageToSendDtos : {JsonSerializer.Serialize(messageToSendDtos)}");
                     }
 
                     sw2.Stop();
@@ -1090,6 +1095,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
                             await cn.OpenAsync(token);
                             await using SqlCommand cm = new(command, cn);
+                            cm.CommandTimeout = 120;
                             cm.CommandType = CommandType.Text;
                             await cm.ExecuteNonQueryAsync(token);
                             await cm.Connection.CloseAsync();
@@ -1104,9 +1110,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                             await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
 
                             await cn.OpenAsync(token);
-                            await using MySqlCommand cm = new(command, cn) { CommandType = CommandType.Text };
+                            await using MySqlCommand cm = new(command, cn);
+                            cm.CommandType = CommandType.Text;
+                            cm.CommandTimeout = 120;
                             await cm.ExecuteNonQueryAsync(token);
-                            await cm.Connection.CloseAsync();
+                            await cm.Connection!.CloseAsync();
                             await cn.CloseAsync();
 
                             break;
@@ -1118,6 +1126,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
                             await cn.OpenAsync(token);
                             await using OracleCommand cm = new(command, cn);
+                            cm.CommandTimeout = 120;
                             cm.CommandType = CommandType.Text;
                             await cm.ExecuteNonQueryAsync(token);
                             await cm.Connection.CloseAsync();
@@ -1135,12 +1144,12 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     {
                         tasks.Add(Task.Run(() => Send(item, tId++, token), token));
                     }
-                    Task.WaitAll(tasks.ToArray(), token);
+                    Task.WaitAll(tasks.ToArray(), TimeSpan.FromMinutes(3));
 
                     sw4.Stop();
 
                     total.Stop();
-                    Log.Information($"Read count:{dt.Rows.Count}\tRead DB:{sw1.ElapsedMilliseconds}\tCreate send list:{sw2.ElapsedMilliseconds}\t Tasks: {tId}\t Update time: {sw3.ElapsedMilliseconds} \t Send time: {sw4.ElapsedMilliseconds} \t Total time: {total.ElapsedMilliseconds}");
+                    Log.Information("Read count:{RowsCount}\tRead DB:{Sw1ElapsedMilliseconds}\tCreate send list:{Sw2ElapsedMilliseconds}\t Tasks: {TId}\t Update time: {Sw3ElapsedMilliseconds} \t Send time: {Sw4ElapsedMilliseconds} \t Total time: {TotalElapsedMilliseconds}", dt.Rows.Count, sw1.ElapsedMilliseconds, sw2.ElapsedMilliseconds, tId, sw3.ElapsedMilliseconds, sw4.ElapsedMilliseconds, total.ElapsedMilliseconds);
 
                     dt.Dispose();
                 }
@@ -1150,20 +1159,21 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 dt.Dispose();
                 _errorCount++;
                 _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{ex.Message}";
-                Log.Error($"Error in Read and Send. Error is: {ex.Message}");
+                Log.Error("Error in Read and Send. Error is: {ExMessage}", ex.Message);
             }
         }
         catch (Exception e)
         {
             _errorCount++;
             dt.Dispose();
-            Log.Error($"Error in ReadAndPost: {e.Message}");
+            Log.Error("Error in ReadAndPost: {EMessage}", e.Message);
         }
     }
     
     private async Task Send(List<MessageSendModel> listToSend, int tId, CancellationToken token)
     {
         HttpClient client = clientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromMinutes(3);
 
         if (!RuntimeSettings.UseApiKey)
         {
@@ -1264,6 +1274,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
                                 await cn.OpenAsync(token);
                                 await using SqlCommand cm = new(command, cn);
+                                cm.CommandTimeout = 120;
                                 cm.CommandType = CommandType.Text;
                                 await cm.ExecuteNonQueryAsync(token);
                                 await cm.Connection.CloseAsync();
@@ -1278,9 +1289,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                 await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
 
                                 await cn.OpenAsync(token);
-                                await using MySqlCommand cm = new(command, cn) { CommandType = CommandType.Text };
+                                await using MySqlCommand cm = new(command, cn);
+                                cm.CommandType = CommandType.Text;
+                                cm.CommandTimeout = 120;
                                 await cm.ExecuteNonQueryAsync(token);
-                                await cm.Connection.CloseAsync();
+                                await cm.Connection!.CloseAsync();
                                 await cn.CloseAsync();
 
                                 break;
@@ -1292,6 +1305,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
                                 await cn.OpenAsync(token);
                                 await using OracleCommand cm = new(command, cn);
+                                cm.CommandTimeout = 120;
                                 cm.CommandType = CommandType.Text;
                                 await cm.ExecuteNonQueryAsync(token);
                                 await cm.Connection.CloseAsync();
@@ -1308,10 +1322,10 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     {
                         _errorCount++;
                         _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                        Log.Error($"Error in Update: {e.Message}");
+                        Log.Error("Error in Update: {EMessage}", e.Message);
                     }
                 }
-                Log.Information($"TaskId: {tId}\tSend time: {sw1.ElapsedMilliseconds}\t count:{listToSend.Count}\t Update count:{ids.Count}\tUpdate time:{sw2.ElapsedMilliseconds}");
+                Log.Information("TaskId: {TId}\tSend time: {Sw1ElapsedMilliseconds}\t count:{Count}\t Update count:{IdsCount}\tUpdate time:{Sw2ElapsedMilliseconds}", tId, sw1.ElapsedMilliseconds, listToSend.Count, ids.Count, sw2.ElapsedMilliseconds);
             }
             else if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
@@ -1336,14 +1350,14 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 RuntimeSettings.FullLog.OptionalLog($"status code: {response.StatusCode.ToString()} message: {await response.Content.ReadAsStringAsync(token)}");
             }
             
-            Log.Information($"Update failed messages \tTaskId: {tId}\tSend time: {sw1.ElapsedMilliseconds}\t count:{listToSend.Count}\t Update count:{ids.Count}");
+            Log.Information("Update failed messages \tTaskId: {TId}\tSend time: {Sw1ElapsedMilliseconds}\t count:{Count}\t Update count:{IdsCount}", tId, sw1.ElapsedMilliseconds, listToSend.Count, ids.Count);
         }
         catch (Exception e)
         {
             await UpdateStatus(ids, RuntimeSettings.StatusForStored, token);
             _errorCount++;
             _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-            Log.Error($"Send error : {e.Message}");
+            Log.Error("Send error : {EMessage}", e.Message);
         }
     }
 
@@ -1360,6 +1374,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 string pattern = RuntimeSettings.UpdateQueryAfterFailedSend;
                 string command = ids.Select(id => string.Format(pattern, status, id)).Aggregate("", (current, newComm) => current + newComm);
                 await using SqlCommand cm = new(command, cn);
+                cm.CommandTimeout = 120;
                 cm.CommandType = CommandType.Text;
                 await cm.ExecuteNonQueryAsync(cancellationToken);
                 await cm.Connection.CloseAsync();
@@ -1375,9 +1390,11 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 await cn.OpenAsync(cancellationToken);
                 string pattern = RuntimeSettings.UpdateQueryAfterFailedSend;
                 string command = ids.Select(id => string.Format(pattern, status, id)).Aggregate("", (current, newComm) => current + newComm);
-                await using MySqlCommand cm = new(command, cn) { CommandType = CommandType.Text };
+                await using MySqlCommand cm = new(command, cn);
+                cm.CommandType = CommandType.Text;
+                cm.CommandTimeout = 120;
                 await cm.ExecuteNonQueryAsync(cancellationToken);
-                await cm.Connection.CloseAsync();
+                await cm.Connection!.CloseAsync();
                 await cn.CloseAsync();
 
                 break;
@@ -1391,6 +1408,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 string pattern = RuntimeSettings.UpdateQueryAfterFailedSend;
                 string command = ids.Select(id => string.Format(pattern, status, id)).Aggregate("", (current, newComm) => current + newComm);
                 await using OracleCommand cm = new(command, cn);
+                cm.CommandTimeout = 120;
                 cm.CommandType = CommandType.Text;
                 await cm.ExecuteNonQueryAsync(cancellationToken);
                 await cm.Connection.CloseAsync();
@@ -1401,7 +1419,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         }
         stopwatch.Stop();
 
-        Log.Information($"Update failed messages\t Update time:{stopwatch.ElapsedMilliseconds}");
+        Log.Information("Update failed messages\t Update time:{StopwatchElapsedMilliseconds}", stopwatch.ElapsedMilliseconds);
     }
 
     private async Task GetDeliveryAsync(CancellationToken token)
@@ -1442,7 +1460,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (getDelivery): {e.Message}");
+                        Log.Error("Error in read db (getDelivery): {EMessage}", e.Message);
                     }
                     finally
                     {
@@ -1475,7 +1493,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (getDelivery): {e.Message}");
+                        Log.Error("Error in read db (getDelivery): {EMessage}", e.Message);
                     }
                     finally
                     {
@@ -1508,7 +1526,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     }
                     catch (Exception e)
                     {
-                        Log.Error($"Error in read db (getDelivery): {e.Message}");
+                        Log.Error("Error in read db (getDelivery): {EMessage}", e.Message);
                     }
                     finally
                     {
@@ -1522,6 +1540,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             async Task<HttpResponseMessage> SetResult(List<string> ids)
             {
                 HttpClient client = clientFactory.CreateClient();
+                client.Timeout = TimeSpan.FromMinutes(3);
 
                 if (!RuntimeSettings.UseApiKey)
                 {
@@ -1569,7 +1588,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                     List<DlrStatus> statusList = resultApi!.Data;
                     List<DlrDto> initialList = [];
 
-                    Log.Information($"statusList: {JsonConvert.SerializeObject(statusList)}");
+                    Log.Information("statusList: {SerializeObject}", JsonConvert.SerializeObject(statusList));
 
                     for (int i = 0; i < table.Rows.Count; i++)
                     {
@@ -1585,7 +1604,8 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                                                             DateTime = dlrStatus.DeliveryDate!.Value.ToLocalTime().ToString(),
                                                             MessageId = dlrStatus.Id,
                                                             FullDelivery = dlrStatus.PartStatus.All(p => p.Item2 == DeliveryStatus.Delivered),
-                                                            PartNumber = dlrStatusPartStatus.Item1
+                                                            PartNumber = dlrStatusPartStatus.Item1,
+                                                            Mobile = ""
                                                         });
                         }
                     }
@@ -1601,7 +1621,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                         sw3.Start();
                         await UpdateDbForDlr(updateList, token);
                         sw3.Stop();
-                        Log.Information($"DLR - Api call time: {sw1.ElapsedMilliseconds}\t Create update list: {sw2.ElapsedMilliseconds}\t Update list count: {updateList.Count}\t update time: {sw3.ElapsedMilliseconds}");
+                        Log.Information("DLR - Api call time: {Sw1ElapsedMilliseconds}\t Create update list: {Sw2ElapsedMilliseconds}\t Update list count: {UpdateListCount}\t update time: {Sw3ElapsedMilliseconds}", sw1.ElapsedMilliseconds, sw2.ElapsedMilliseconds, updateList.Count, sw3.ElapsedMilliseconds);
                     }
 
                     
@@ -1622,7 +1642,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         }
         catch (Exception e)
         {
-            Log.Error($"Error GetDelivery : {e.Message}");
+            Log.Error("Error GetDelivery : {EMessage}", e.Message);
         }
     }
 
@@ -1640,6 +1660,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             List<MoDto> initialList = [];
 
             HttpClient client = clientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromMinutes(3);
 
             if (!RuntimeSettings.UseApiKey)
             {
@@ -1701,14 +1722,14 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 {
                     await InsertInboxAsync(list, token);
                     sw3.Stop();
-                    Log.Information($"MO - Api call time: {sw1.ElapsedMilliseconds}\t Create list: {sw2.ElapsedMilliseconds}\t list count: {list.Count}\t Insert time: {sw3.ElapsedMilliseconds}");
+                    Log.Information("MO - Api call time: {Sw1ElapsedMilliseconds}\t Create list: {Sw2ElapsedMilliseconds}\t list count: {ListCount}\t Insert time: {Sw3ElapsedMilliseconds}", sw1.ElapsedMilliseconds, sw2.ElapsedMilliseconds, list.Count, sw3.ElapsedMilliseconds);
                 }
             }
             await Task.Delay(1000, token);
         }
         catch (Exception ex)
         {
-            Log.Error($"error get mo :{ex.Message}");
+            Log.Error("error get mo :{ExMessage}", ex.Message);
         }
     }
     
@@ -1722,7 +1743,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         }
         catch (Exception ex)
         {
-            Log.Error($"Error starting Worker {ex.Message}");
+            Log.Error("Error starting Worker {ExMessage}", ex.Message);
             throw;
         }
     }
@@ -1750,7 +1771,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         }
         catch (Exception ex)
         {
-            Log.Error($"Error disposing Worker {ex.Message}");
+            Log.Error("Error disposing Worker {ExMessage}", ex.Message);
         }
         _disposed = true;
     }
@@ -1760,8 +1781,6 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         return Regex.IsMatch(text, "[^\u0000-\u00ff]");
     }
 }
-
-
 
 public static class FullLogManage
 {

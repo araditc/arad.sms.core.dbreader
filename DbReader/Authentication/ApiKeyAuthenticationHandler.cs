@@ -1,11 +1,10 @@
 ﻿using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
-
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
-namespace Arad.SMS.Core.DbReader.Authentication;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Authentication;
 
 public class ApiKeyAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options,
                                          ILoggerFactory logger,

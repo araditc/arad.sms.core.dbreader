@@ -1,4 +1,4 @@
-﻿namespace Arad.SMS.Core.DbReader;
+﻿namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader;
 
 public static class RuntimeSettings
 {

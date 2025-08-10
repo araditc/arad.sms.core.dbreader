@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 
-namespace Arad.SMS.Core.DbReader.Authentication;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Authentication;
 
 public class ApiKeyAuthorizationAttribute : AuthorizeAttribute
 {

@@ -16,17 +16,17 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 public class MoDto
 {
-    public string Id { get; set; }
+    public string Id { get; set; } = string.Empty;
 
-    public string SourceAddress { get; set; }
+    public required string SourceAddress { get; set; }
 
-    public string DestinationAddress { get; set; }
+    public required string DestinationAddress { get; set; }
 
-    public string MessageText { get; set; }
+    public required string MessageText { get; set; }
 
     public DateTime ReceiveDateTime { get; set; }
 
