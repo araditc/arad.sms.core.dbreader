@@ -82,7 +82,7 @@ A few important configuration blocks:
   "DB": {
     "Provider": "MySQL",
     "ConnectionString": "Server=localhost;Database=test;Uid=root;Pwd=12346;",
-    "SelectQueryForSend": "SELECT outboundmessage_id as ID, from_mobile_number as SOURCEADDRESS, dest_mobile_number as DESTINATIONADDRESS, message_body as MESSAGETEXT from outbound_messages where status is null LIMIT {0}",
+    "SelectQueryForSend": "SELECT outboundmessage_id as ID, from_mobile_number as SOURCEADDRESS, dest_mobile_number as DESTINATIONADDRESS, message_body as MESSAGETEXT from outbound_messages where status is null LIMIT {0}", //if query start with SP: then you can use stored procedure and with param name => @mps
     "UpdateQueryBeforeSend": "UPDATE outbound_messages set status = 'WaitingForSend' where outboundmessage_id in ({0});",
     "UpdateQueryAfterSend": "UPDATE outbound_messages set status = '{0}', sent_time = '{1}', ticket = '{2}', selection_id = {3}, UpstramGateway = {4} where outboundmessage_id = {5};",
     "StatusForSuccessSend": "Sent",
@@ -93,10 +93,6 @@ A few important configuration blocks:
     "UpdateQueryForDelivery": "UPDATE outbound_messages set status = '{0}', update_time = '{1}' where ticket = '{2}';",
     "InsertQueryForInbox": "INSERT INTO inbound_messages (source_number, mobile_number, date, message) VALUES ('{0}','{1}','{2}','{3}');",
     "SelectQueryForNullStatus": "SELECT COUNT(*) as count from outbound_messages where status is null;",
-    "EnableCopyFromOutgoingToOutbound": false,
-    "SelectQueryForOutgoing": "Select id as ID, from_mobile_number as SOURCEADDRESS, dest_mobile_number as DESTINATIONADDRESS, message_body as MESSAGETEXT from outgoing_message where status is null and Not EXISTS(SELECT message_id FROM outbound_messages WHERE message_id = id) LIMIT {0}",
-    "InsertQueryForOutgoing": "INSERT outbound_messages (from_mobile_number, dest_mobile_number, message_body, creation_date, message_id) VALUES ('{0}','{1}','{2}', '{3}', {4});",
-    "UpdateQueryForOutgoing": "UPDATE outgoing_message set status = 4 where id in ({0});",
     "SelectQueryForArchive": "SELECT outboundmessage_id as ID, creation_date as CreationDate FROM outbound_messages where DATE(creation_date) <= DATE(DATE_SUB(SYSDATE(), INTERVAL 4 DAY)) limit {0};",
     "OutboxTableName": "outbound_messages",
     "InsertQueryForArchive": "INSERT INTO {0} SELECT * FROM outbound_messages where outboundmessage_id in ({1});",
@@ -125,7 +121,8 @@ A few important configuration blocks:
     "UseApiKey": true,
     "ApiKey": "+u",
     "ReturnLongId": false,
-    "ApiVersion": 4
+    "ApiVersion": 4,
+    "Timeout": 10 // sec
   },
   "BulkTimeSettings": {
     "Start": "00:00:00",

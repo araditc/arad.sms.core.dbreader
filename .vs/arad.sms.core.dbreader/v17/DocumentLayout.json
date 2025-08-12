@@ -3,6 +3,18 @@
   "WorkspaceRootPath": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\README_FA.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:README_FA.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\README.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:README.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{15069C45-F5E7-42A4-B0E2-D80D3DC3158F}|DbReader\\Arad.SMS.Core.DbReader.csproj|d:\\mydocuments\\sourcecode\\arad.sms.core.dbreader\\dbreader\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}",
+      "RelativeMoniker": "D:0:0:{15069C45-F5E7-42A4-B0E2-D80D3DC3158F}|DbReader\\Arad.SMS.Core.DbReader.csproj|solutionrelative:dbreader\\appsettings.json||{90A6B3A7-C1A3-4009-A288-E2FF89E96FA0}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{15069C45-F5E7-42A4-B0E2-D80D3DC3158F}|DbReader\\Arad.SMS.Core.DbReader.csproj|d:\\mydocuments\\sourcecode\\arad.sms.core.dbreader\\dbreader\\authentication\\apikeyauthorizationattribute.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{15069C45-F5E7-42A4-B0E2-D80D3DC3158F}|DbReader\\Arad.SMS.Core.DbReader.csproj|solutionrelative:dbreader\\authentication\\apikeyauthorizationattribute.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -102,7 +114,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 13,
+          "SelectedChildIndex": 7,
           "Children": [
             {
               "$type": "Bookmark",
@@ -130,12 +142,51 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 7,
+              "DocumentIndex": 2,
+              "Title": "appsettings.json",
+              "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\appsettings.json",
+              "RelativeDocumentMoniker": "DbReader\\appsettings.json",
+              "ToolTip": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\appsettings.json",
+              "RelativeToolTip": "DbReader\\appsettings.json",
+              "ViewState": "AgIAABcAAABAZmZmZiYgwDIAAAAYAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001642|",
+              "WhenOpened": "2025-08-12T11:04:47.36Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "README_FA.md",
+              "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\README_FA.md",
+              "RelativeDocumentMoniker": "README_FA.md",
+              "ToolTip": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\README_FA.md",
+              "RelativeToolTip": "README_FA.md",
+              "ViewState": "AgIAAPUAAAAAPDMzM7MSwKoAAAA0AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2025-08-12T11:04:28.154Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "README.md",
+              "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\README.md",
+              "RelativeDocumentMoniker": "README.md",
+              "ToolTip": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\README.md",
+              "RelativeToolTip": "README.md",
+              "ViewState": "AgIAAGcAAAAAIDMzMzPrv3wAAAAYAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2025-08-12T11:04:27.924Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 10,
               "Title": "DbConnectionFactory.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Factory\\DbConnectionFactory.cs",
               "RelativeDocumentMoniker": "DbReader\\Factory\\DbConnectionFactory.cs",
-              "ToolTip": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Factory\\DbConnectionFactory.cs*",
-              "RelativeToolTip": "DbReader\\Factory\\DbConnectionFactory.cs*",
+              "ToolTip": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Factory\\DbConnectionFactory.cs",
+              "RelativeToolTip": "DbReader\\Factory\\DbConnectionFactory.cs",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-08-12T11:00:04.069Z",
@@ -143,7 +194,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 6,
+              "DocumentIndex": 9,
               "Title": "IDbConnectionFactory.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Factory\\IDbConnectionFactory.cs",
               "RelativeDocumentMoniker": "DbReader\\Factory\\IDbConnectionFactory.cs",
@@ -156,7 +207,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 5,
+              "DocumentIndex": 8,
               "Title": "TimedWorker.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Services\\TimedWorker.cs",
               "RelativeDocumentMoniker": "DbReader\\Services\\TimedWorker.cs",
@@ -169,7 +220,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 7,
               "Title": "Worker.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Services\\Worker.cs",
               "RelativeDocumentMoniker": "DbReader\\Services\\Worker.cs",
@@ -182,7 +233,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 6,
               "Title": "HookController.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Controllers\\HookController.cs",
               "RelativeDocumentMoniker": "DbReader\\Controllers\\HookController.cs",
@@ -195,7 +246,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 5,
               "Title": "MessageController.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Controllers\\MessageController.cs",
               "RelativeDocumentMoniker": "DbReader\\Controllers\\MessageController.cs",
@@ -208,7 +259,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 4,
               "Title": "ApiKeyAuthenticationHandler.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Authentication\\ApiKeyAuthenticationHandler.cs",
               "RelativeDocumentMoniker": "DbReader\\Authentication\\ApiKeyAuthenticationHandler.cs",
@@ -221,20 +272,20 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 3,
               "Title": "ApiKeyAuthorizationAttribute.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Authentication\\ApiKeyAuthorizationAttribute.cs",
               "RelativeDocumentMoniker": "DbReader\\Authentication\\ApiKeyAuthorizationAttribute.cs",
               "ToolTip": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Authentication\\ApiKeyAuthorizationAttribute.cs",
               "RelativeToolTip": "DbReader\\Authentication\\ApiKeyAuthorizationAttribute.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-08-12T11:00:01.386Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 8,
+              "DocumentIndex": 11,
               "Title": "UpdateMySqlModel.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\UpdateMySqlModel.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\UpdateMySqlModel.cs",
@@ -247,7 +298,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 9,
+              "DocumentIndex": 12,
               "Title": "TokenResponseModel.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\TokenResponseModel.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\TokenResponseModel.cs",
@@ -260,7 +311,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 10,
+              "DocumentIndex": 13,
               "Title": "ScheduledJob.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\ScheduledJob.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\ScheduledJob.cs",
@@ -273,7 +324,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 11,
+              "DocumentIndex": 14,
               "Title": "ResultApiV4.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\ResultApiV4.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\ResultApiV4.cs",
@@ -286,7 +337,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 12,
+              "DocumentIndex": 15,
               "Title": "ResultApi.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\ResultApi.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\ResultApi.cs",
@@ -299,7 +350,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 13,
+              "DocumentIndex": 16,
               "Title": "MODto.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\MODto.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\MODto.cs",
@@ -312,7 +363,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 14,
+              "DocumentIndex": 17,
               "Title": "MessageSendModel.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\MessageSendModel.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\MessageSendModel.cs",
@@ -325,7 +376,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 15,
+              "DocumentIndex": 18,
               "Title": "LogConfig.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\LogConfig.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\LogConfig.cs",
@@ -338,7 +389,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 16,
+              "DocumentIndex": 19,
               "Title": "Enums.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\Enums.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\Enums.cs",
@@ -351,7 +402,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 17,
+              "DocumentIndex": 20,
               "Title": "DLRStatus.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\DLRStatus.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\DLRStatus.cs",
@@ -364,7 +415,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 18,
+              "DocumentIndex": 21,
               "Title": "DLRDto.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\DLRDto.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\DLRDto.cs",
@@ -377,7 +428,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 19,
+              "DocumentIndex": 22,
               "Title": "DataCodings.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\DataCodings.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\DataCodings.cs",
@@ -390,7 +441,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 20,
+              "DocumentIndex": 23,
               "Title": "AradA2PMessage.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Models\\AradA2PMessage.cs",
               "RelativeDocumentMoniker": "DbReader\\Models\\AradA2PMessage.cs",
@@ -403,7 +454,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 21,
+              "DocumentIndex": 24,
               "Title": "Program.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\Program.cs",
               "RelativeDocumentMoniker": "DbReader\\Program.cs",
@@ -416,7 +467,7 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 22,
+              "DocumentIndex": 25,
               "Title": "RuntimeSettings.cs",
               "DocumentMoniker": "D:\\MyDocuments\\SourceCode\\arad.sms.core.dbreader\\DbReader\\RuntimeSettings.cs",
               "RelativeDocumentMoniker": "DbReader\\RuntimeSettings.cs",
