@@ -40,6 +40,8 @@ public static class RuntimeSettings
 
     public static int ApiVersion { get; set; }
 
+    public static int Timeout { get; set; }
+
     public static string ApiKey { get; set; } = string.Empty;
 
     public static string DestinationAddress { get; set; } = string.Empty;
@@ -151,6 +153,7 @@ public static class RuntimeSettings
         ApiKey = Configuration["SmsEndPointConfig:ApiKey"] ?? "";
         ReturnLongId = Convert.ToBoolean(Configuration["SmsEndPointConfig:ReturnLongId"]);
         ApiVersion = Convert.ToInt32(Configuration["SmsEndPointConfig:ApiVersion"]);
+        Timeout = Convert.ToInt32(Configuration["SmsEndPointConfig:Timeout"]);
         #endregion
 
         #region Bulk time setting
