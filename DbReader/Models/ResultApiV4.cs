@@ -1,4 +1,4 @@
-﻿namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
+﻿namespace Arad.SMS.Core.DbReader.Models;
 
 public class ResultApiV4
 {

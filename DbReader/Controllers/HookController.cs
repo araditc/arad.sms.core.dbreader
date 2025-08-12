@@ -1,19 +1,21 @@
 ﻿using System.Collections.Specialized;
+using System.Data.Common;
 using System.Diagnostics;
 using System.Web;
 
-using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
-using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Services;
+using Arad.SMS.Core.DbReader.Factory;
+using Arad.SMS.Core.DbReader.Models;
+
 using Microsoft.AspNetCore.Mvc;
 
 using Serilog;
 
-namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Controllers;
+namespace Arad.SMS.Core.DbReader.Controllers;
 
-public class HookController : Controller
+public class HookController(IDbConnectionFactory connectionFactory) : Controller
 {
     [HttpGet("GetMO")]
-    public ActionResult GetMo(CancellationToken token)
+    public async Task<ActionResult> GetMo(CancellationToken token)
     {
         try
         {
@@ -34,11 +36,19 @@ public class HookController : Controller
             [
                 new() { MessageText = text, SourceAddress = from, DestinationAddress = dest, ReceiveDateTime = DateTime.Now }
             ];
-            _ = Worker.InsertInboxAsync(inboxSaveQueues, token);
+
+            await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
+
+            string strCommand = string.Empty;
+            strCommand = inboxSaveQueues.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, item.ReceiveDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText)).
+                                         Aggregate(strCommand, (current, newCommand) => current + newCommand);
+
+            DbCommand command = connectionFactory.CreateCommand(strCommand, connection);
+            await command.ExecuteNonQueryAsync(token);
         }
         catch (Exception ex)
         {
-            Log.Error($"GetMo error :{ex.Message}");
+            Log.Error("GetMo error :{ExMessage}", ex.Message);
 
             return BadRequest();
         }
@@ -47,7 +57,7 @@ public class HookController : Controller
     }
 
     [HttpPost("GetDLR")]
-    public ActionResult GetDLR([FromBody] List<DeliveryRelayModel> models, CancellationToken token)
+    public async Task<ActionResult> GetDLR([FromBody] List<DeliveryRelayModel> models, CancellationToken token)
     {
         try
         {
@@ -77,14 +87,23 @@ public class HookController : Controller
                 updateList.AddRange(initialList.Select(dto => new UpdateDbModel { Status = dto.Status, TrackingCode = dto.MessageId, DeliveredAt = Convert.ToDateTime(dto.DateTime).ToString("yyyy-MM-dd HH:mm:ss") }));
                 sw2.Stop();
                 sw3.Start();
-                _ = Worker.UpdateDbForDlr(updateList, token);
+
+                await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
+
+                string strCommand = string.Empty;
+                strCommand = updateList.Select(item => string.Format(RuntimeSettings.UpdateQueryForDelivery, (int)item.Status, item.DeliveredAt, item.TrackingCode)).
+                                        Aggregate(strCommand, (current, newCommand) => current + newCommand);
+
+                DbCommand command = connectionFactory.CreateCommand(strCommand, connection);
+                await command.ExecuteNonQueryAsync(token);
+
                 sw3.Stop();
-                Log.Information($"DLR - Create update list: {sw2.ElapsedMilliseconds}\t Update list count: {updateList.Count}\t update time: {sw3.ElapsedMilliseconds}");
+                Log.Information("DLR - Create update list: {Sw2ElapsedMilliseconds}\t Update list count: {UpdateListCount}\t update time: {Sw3ElapsedMilliseconds}", sw2.ElapsedMilliseconds, updateList.Count, sw3.ElapsedMilliseconds);
             }
         }
         catch (Exception ex)
         {
-            Log.Error($"GetDLRArad error push :{ex.Message}");
+            Log.Error("GetDLRArad error push :{ExMessage}", ex.Message);
 
             return BadRequest();
         }

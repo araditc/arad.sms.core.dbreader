@@ -16,14 +16,7 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
-namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
-
-public class MessageList
-{
-    public List<KeyValuePair<string, int>> Ids { get; set; } = [];
-
-    public MessageSendModel MessageSendModel { get; set; } = new();
-}
+namespace Arad.SMS.Core.DbReader.Models;
 
 public class MessageSendModel
 {

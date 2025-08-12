@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel;
 
-namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
+namespace Arad.SMS.Core.DbReader.Models;
 
 public enum ApiResponse
 {

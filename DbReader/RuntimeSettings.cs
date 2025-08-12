@@ -1,4 +1,4 @@
-﻿namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader;
+﻿namespace Arad.SMS.Core.DbReader;
 
 public static class RuntimeSettings
 {
@@ -38,8 +38,6 @@ public static class RuntimeSettings
 
     public static bool UseApiKey { get; set; }
 
-    public static bool EnableCopyFromOutgoingToOutbound { get; set; }
-
     public static int ApiVersion { get; set; }
 
     public static string ApiKey { get; set; } = string.Empty;
@@ -75,12 +73,6 @@ public static class RuntimeSettings
     public static string UpdateQueryForDelivery { get; set; } = string.Empty;
 
     public static string UserName { get; set; } = string.Empty;
-
-    public static string SelectQueryForOutgoing { get; set; } = string.Empty;
-
-    public static string InsertQueryForOutgoing { get; set; } = string.Empty;
-
-    public static string UpdateQueryForOutgoing { get; set; } = string.Empty;
 
     public static string StatusForStored { get; set; } = string.Empty;
 
@@ -141,10 +133,6 @@ public static class RuntimeSettings
         UpdateQueryForDelivery = Configuration["DB:UpdateQueryForDelivery"] ?? "";
         InsertQueryForInbox = Configuration["DB:InsertQueryForInbox"] ?? "";
         SelectQueryForNullStatus = Configuration["DB:SelectQueryForNullStatus"] ?? "";
-        EnableCopyFromOutgoingToOutbound = Convert.ToBoolean(Configuration["DB:EnableCopyFromOutgoingToOutbound"]);
-        SelectQueryForOutgoing = Configuration["DB:SelectQueryForOutgoing"] ?? "";
-        InsertQueryForOutgoing = Configuration["DB:InsertQueryForOutgoing"] ?? "";
-        UpdateQueryForOutgoing = Configuration["DB:UpdateQueryForOutgoing"] ?? "";
         SelectQueryForArchive = Configuration["DB:SelectQueryForArchive"] ?? "";
         InsertQueryForArchive = Configuration["DB:InsertQueryForArchive"] ?? "";
         DeleteQueryAfterArchive = Configuration["DB:DeleteQueryAfterArchive"] ?? "";

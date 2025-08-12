@@ -16,25 +16,29 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
-using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
-using Flurl;
-using Microsoft.Data.SqlClient;
-using MySqlConnector;
-using Newtonsoft.Json;
-using Oracle.ManagedDataAccess.Client;
-using Serilog;
 using System.Data;
+using System.Data.Common;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Mime;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Services;
+using Arad.SMS.Core.DbReader.Factory;
+using Arad.SMS.Core.DbReader.Models;
 
-public class Worker(IHttpClientFactory clientFactory) : BackgroundService
+using Flurl;
+
+using Newtonsoft.Json;
+
+using Serilog;
+
+//using MySqlConnector;
+
+namespace Arad.SMS.Core.DbReader.Services;
+
+public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory connectionFactory) : BackgroundService
 {
     private string _accessToken = "";
     private static int _errorCount;
@@ -66,7 +70,6 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             
             ScheduledJobs.Add(new ("Send", TimeSpan.FromSeconds(1), ReadAndPostAsync));
             ScheduledJobs.Add(new ("ArchiveData", TimeSpan.FromSeconds(1), ArchiveDataAsync));
-            ScheduledJobs.Add(new ("CopyFromOutgoingToOutbound", TimeSpan.FromSeconds(1), CopyFromOutgoingToOutboundAsync));
             ScheduledJobs.Add(new ("CreateAlertMessage", TimeSpan.FromSeconds(1), CreateAlertMessageAsync));
 
             if (RuntimeSettings.MOIntervalTime > 0)
@@ -196,8 +199,10 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         {
             return;
         }
-
-        DataTable dt = new();
+        
+        await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
+        DbCommand dbCommand;
+        DataTable dataTable = new();
         string archiveTableName = $"{RuntimeSettings.OutboxTableName}_Archive"; //default name
 
         try
@@ -206,72 +211,58 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             Stopwatch sw2 = new();
             Stopwatch sw3 = new();
             Stopwatch sw4 = new();
-
-            await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-            await cn.OpenAsync(token);
+            
             sw1.Start();
-
-            await using (MySqlCommand cm = new(string.Format(RuntimeSettings.SelectQueryForArchive, RuntimeSettings.ArchiveBatchSize), cn))
-            {
-                dt.Load(await cm.ExecuteReaderAsync(token));
-            }
-
+            
+            dbCommand = connectionFactory.CreateCommand(string.Format(RuntimeSettings.SelectQueryForArchive, RuntimeSettings.ArchiveBatchSize), connection);
+            dataTable.Load(await dbCommand.ExecuteReaderAsync(token));
+            
             sw1.Stop();
-            await cn.CloseAsync();
 
             List<string> archiveIds = [];
 
-            if (dt.Rows.Count > 0)
+            if (dataTable.Rows.Count > 0)
             {
                 sw2.Start();
 
-                DateTime? creationDate = dt.Rows[0].Field<DateTime>("CreationDate");
+                DateTime? creationDate = dataTable.Rows[0].Field<DateTime>("CreationDate");
                 if (creationDate != null)
                 {
-                    archiveTableName = await CreateArchiveTable(creationDate.Value, token);
+                    archiveTableName = await connectionFactory.CreateArchiveTable(creationDate.Value, token);
                 }
 
-                archiveIds.AddRange(from DataRow dr in dt.Rows select dr["ID"].ToString()!);
+                archiveIds.AddRange(from DataRow dr in dataTable.Rows select dr["ID"].ToString()!);
 
                 sw2.Stop();
 
                 if (archiveIds.Any())
                 {
                     sw3.Start();
-                    string ids = string.Join(",", archiveIds);
-                    await using MySqlConnection con = new(RuntimeSettings.ConnectionString);
-                    await con.OpenAsync(token);
-                    string command = string.Format(RuntimeSettings.InsertQueryForArchive, archiveTableName, ids);
-                    await using MySqlCommand cm = new(command, con);
-                    cm.CommandType = CommandType.Text;
-                    cm.CommandTimeout = 120;
-                    await cm.ExecuteNonQueryAsync(token);
-                    await cm.Connection!.CloseAsync();
-                    await con.CloseAsync();
-                    sw3.Stop();
-                    sw4.Start();
 
-                    await using MySqlConnection conn = new(RuntimeSettings.ConnectionString);
-                    await conn.OpenAsync(token);
-                    string deleteCommand = string.Format(RuntimeSettings.DeleteQueryAfterArchive, ids);
-                    await using MySqlCommand dlCommand = new(deleteCommand, conn);
-                    dlCommand.CommandType = CommandType.Text;
-                    await dlCommand.ExecuteNonQueryAsync(token);
-                    await dlCommand.Connection!.CloseAsync();
+                    string command = string.Format(RuntimeSettings.InsertQueryForArchive, archiveTableName, string.Join(",", archiveIds));
+                    dbCommand = connectionFactory.CreateCommand(command, connection);
+                    await dbCommand.ExecuteNonQueryAsync(token);
+
+                    sw3.Stop();
+
+                    sw4.Start();
+                    
+                    string deleteCommand = string.Format(RuntimeSettings.DeleteQueryAfterArchive, string.Join(",", archiveIds));
+                    dbCommand = connectionFactory.CreateCommand(deleteCommand, connection);
+                    await dbCommand.ExecuteNonQueryAsync(token);
+
                     sw4.Stop();
 
-                    await conn.CloseAsync();
                     Log.Information($"Archive count:{archiveIds.Count}\tRead DB:{sw1.ElapsedMilliseconds}\tCreate archive list:{sw2.ElapsedMilliseconds}\tinsert to archive time:{sw3.ElapsedMilliseconds}\t" +
                                     $"delete from outbox time:{sw4.ElapsedMilliseconds}");
                 }
 
-                dt.Dispose();
+                dataTable.Dispose();
             }
         }
         catch (Exception e)
         {
-            dt.Dispose();
+            dataTable.Dispose();
             _errorCount++;
             _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
             Log.Error("Error in archive: {EMessage}", e.Message);
@@ -279,328 +270,28 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             if (e.Message.Contains("Duplicate entry"))
             {
                 Log.Information("Trying to remove duplicate entry: {DateTime}", DateTime.Now);
-
-                await using (MySqlConnection con = new(RuntimeSettings.ConnectionString))
-                {
-                    await con.OpenAsync(token);
-
-                    await using (MySqlCommand cm = new(string.Format(RuntimeSettings.DeleteQueryForDuplicateRecords, archiveTableName), con))
-                    {
-                        await cm.ExecuteNonQueryAsync(token);
-                    }
-
-                    await con.CloseAsync();
-                }
+                
+                dbCommand = connectionFactory.CreateCommand(string.Format(RuntimeSettings.DeleteQueryForDuplicateRecords, archiveTableName), connection);
+                await dbCommand.ExecuteNonQueryAsync(token);
 
                 Log.Error("Duplicate entry removed at: {DateTime}", DateTime.Now);
             }
         }
     }
-
-    private async Task<string> CreateArchiveTable(DateTime creationDate, CancellationToken token)
-    {
-        PersianCalendar persianCalendar = new();
-        string archiveTableName = $"{RuntimeSettings.OutboxTableName}_Archive_{persianCalendar.GetYear(creationDate)}{persianCalendar.GetMonth(creationDate).ToString().PadLeft(2, '0')}";
-
-        try
-        {
-            if (await ExistArchiveTable(archiveTableName))
-            {
-                return archiveTableName;
-            }
-
-            await using MySqlConnection connection = new(RuntimeSettings.ConnectionString);
-            await connection.OpenAsync(token);
-
-            string query = $"SHOW CREATE TABLE `{RuntimeSettings.OutboxTableName}`;";
-            string createTableScript = "";
-
-            await using (MySqlCommand command = new(query, connection))
-            {
-                await using (MySqlDataReader reader = await command.ExecuteReaderAsync(token))
-                {
-                    if (await reader.ReadAsync(token))
-                    {
-                        createTableScript = reader.GetString(1); // ستون دوم حاوی اسکریپت است
-                    }
-                }
-            }
-
-            if (!string.IsNullOrEmpty(createTableScript))
-            {
-                // جایگزینی نام جدول قدیمی با نام جدید
-                createTableScript = Regex.Replace(createTableScript, @$"\b{RuntimeSettings.OutboxTableName}\b", archiveTableName, RegexOptions.IgnoreCase);
-
-                // اجرای اسکریپت برای ایجاد جدول جدید
-                await using MySqlCommand createCommand = new(createTableScript, connection);
-                await createCommand.ExecuteNonQueryAsync(token);
-                Log.Error("Table '{ArchiveTableName}' created successfully!", archiveTableName);
-            }
-            else
-            {
-                Log.Error("Failed to retrieve table script.");
-            }
-            await connection.CloseAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Error("Error: {ExMessage}", ex.Message);
-        }
-
-        return archiveTableName;
-    }
-
-    private async Task<bool> ExistArchiveTable(string archiveTableName)
-    {
-        await using MySqlConnection conn = new(RuntimeSettings.ConnectionString);
-        try
-        {
-            conn.Open();
-            string query = $" SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '{archiveTableName}'";
-            await using MySqlCommand cmd = new(query, conn);
-            int count = Convert.ToInt32(cmd.ExecuteScalar());
-            
-            await conn.CloseAsync();
-            return count > 0;
-        }
-        catch (Exception ex)
-        {
-            Log.Error("Error: {ExMessage}", ex.Message);
-        }
-
-        return false;
-    }
     
-    private async Task CopyFromOutgoingToOutboundAsync(CancellationToken token)
-    {
-        if (!RuntimeSettings.EnableCopyFromOutgoingToOutbound)
-        {
-            return;
-        }
-        
-        Log.Information("start CopyFromOutgoingToOutbound");
-
-        try
-        {
-            DataTable dataTable = new();
-            string command = string.Format(RuntimeSettings.SelectQueryForOutgoing, RuntimeSettings.Tps);
-
-            switch (RuntimeSettings.DbProvider)
-            {
-                case "SQL":
-                {
-                    await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                    await cn.OpenAsync(token);
-
-                    try
-                    {
-                        await using SqlCommand cm = new(command, cn);
-                        cm.CommandTimeout = 120;
-                        dataTable.Load(await cm.ExecuteReaderAsync(token));
-
-                        if (dataTable.Rows.Count > 0)
-                        {
-                            string cmm = dataTable.Rows.Cast<DataRow>()
-                                                  .Aggregate(string.Empty, (current, row) => current + string.Format(RuntimeSettings.InsertQueryForOutgoing, row["SOURCEADDRESS"], row["DESTINATIONADDRESS"], row["MESSAGETEXT"]));
-                            RuntimeSettings.FullLog.OptionalLog(cmm);
-
-                            await using SqlCommand cmInsert = new(cmm, cn);
-                            cmInsert.CommandType = CommandType.Text;
-                            await cmInsert.ExecuteNonQueryAsync(token);
-                            cmInsert.Connection.Close();
-
-                            List<string> ids = dataTable.Rows.Cast<DataRow>().Select(row => row["ID"].ToString()).ToList()!;
-
-                            await using SqlCommand cmUpdate = new(string.Format(RuntimeSettings.UpdateQueryForOutgoing, string.Join(",", ids)), cn);
-                            cmUpdate.CommandType = CommandType.Text;
-                            await cmUpdate.ExecuteNonQueryAsync(token);
-                            cmUpdate.Connection.Close();
-
-                            await cn.CloseAsync();
-
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (CopyFromOutgoingToOutbound): {EMessage}", e.Message);
-                    }
-                    finally
-                    {
-                        await cn.CloseAsync();
-                    }
-
-                    break;
-                }
-
-                case "MySQL":
-                {
-                    await using MySqlConnection mySqlConnection = new(RuntimeSettings.ConnectionString);
-
-                    await mySqlConnection.OpenAsync(token);
-                    MySqlTransaction sqlTransaction = await mySqlConnection.BeginTransactionAsync(token);
-                    try
-                    {
-
-                        await using MySqlCommand cm = new(command, mySqlConnection);
-                        cm.CommandTimeout = 120;
-                        dataTable.Load(await cm.ExecuteReaderAsync(token));
-
-                        if (dataTable.Rows.Count > 0)
-                        {
-                            string cmm = dataTable.Rows.Cast<DataRow>()
-                                                  .Aggregate(string.Empty,
-                                                             (current, row) => current +
-                                                                               string.Format(RuntimeSettings.InsertQueryForOutgoing,
-                                                                                             row["SOURCEADDRESS"],
-                                                                                             row["DESTINATIONADDRESS"],
-                                                                                             row["MESSAGETEXT"].ToString()!.Replace("'",  @""""),
-                                                                                             DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                                                                                             row["ID"]
-                                                                               ));
-
-                            await using MySqlCommand cmInsert = new(cmm, mySqlConnection, sqlTransaction);
-                            cmInsert.CommandType = CommandType.Text;
-                            await cmInsert.ExecuteNonQueryAsync(token);
-
-                            List<string> ids = dataTable.Rows.Cast<DataRow>().Select(row => row["ID"].ToString()).ToList()!;
-
-                            await using MySqlCommand cmUpdate = new(string.Format(RuntimeSettings.UpdateQueryForOutgoing, string.Join(",", ids)), mySqlConnection, sqlTransaction);
-                            cmUpdate.CommandType = CommandType.Text;
-                            await cmUpdate.ExecuteNonQueryAsync(token);
-
-                            await sqlTransaction.CommitAsync(token);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (CopyFromOutgoingToOutbound): {EMessage}", e.Message);
-                        await sqlTransaction.RollbackAsync(token);
-                    }
-                    finally
-                    {
-                        await mySqlConnection.CloseAsync();
-                    }
-
-                    break;
-                }
-
-                case "Oracle":
-                {
-                    await using OracleConnection oracleConnection = new(RuntimeSettings.ConnectionString);
-
-                    await oracleConnection.OpenAsync(token);
-                    OracleTransaction sqlTransaction = oracleConnection.BeginTransaction();
-                    try
-                    {
-
-                        await using OracleCommand cm = new(command, oracleConnection);
-                        cm.CommandTimeout = 120;
-                        dataTable.Load(await cm.ExecuteReaderAsync(token));
-
-                        if (dataTable.Rows.Count > 0)
-                        {
-                            string cmm = dataTable.Rows.Cast<DataRow>()
-                                                  .Aggregate(string.Empty,
-                                                             (current, row) => current +
-                                                                               string.Format(RuntimeSettings.InsertQueryForOutgoing,
-                                                                                             row["SOURCEADDRESS"],
-                                                                                             row["DESTINATIONADDRESS"],
-                                                                                             row["MESSAGETEXT"].ToString()!.Replace("'",  @""""),
-                                                                                             DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                                                                                             row["ID"]
-                                                                               ));
-
-                            await using OracleCommand cmInsert = new(cmm, oracleConnection);
-                            cmInsert.CommandType = CommandType.Text;
-                            await cmInsert.ExecuteNonQueryAsync(token);
-
-                            List<string> ids = dataTable.Rows.Cast<DataRow>().Select(row => row["ID"].ToString()).ToList()!;
-
-                            await using OracleCommand cmUpdate = new(string.Format(RuntimeSettings.UpdateQueryForOutgoing, string.Join(",", ids)), oracleConnection);
-                            cmUpdate.CommandType = CommandType.Text;
-                            await cmUpdate.ExecuteNonQueryAsync(token);
-
-                            await sqlTransaction.CommitAsync(token);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (CopyFromOutgoingToOutbound): {EMessage}", e.Message);
-                        await sqlTransaction.RollbackAsync(token);
-                    }
-                    finally
-                    {
-                        await oracleConnection.CloseAsync();
-                    }
-
-                    break;
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            Log.Error("Error CopyFromOutgoingToOutbound : {EMessage}", e.Message);
-        }
-    }
-
     private async Task CalculateNullStatusAsync(CancellationToken token)
     {
         if (DateTime.Now.TimeOfDay > RuntimeSettings.StartTime && DateTime.Now.TimeOfDay < RuntimeSettings.EndTime)
         {
-            DataTable dt = new();
+            DataTable dataTable = new();
 
-            switch (RuntimeSettings.DbProvider)
+            await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
+            DbCommand dbCommand = connectionFactory.CreateCommand(RuntimeSettings.SelectQueryForNullStatus, connection);
+            dataTable.Load(await dbCommand.ExecuteReaderAsync(token));
+            
+            if (Convert.ToInt32(dataTable.Rows[0]["count"].ToString()) > RuntimeSettings.QueueCount)
             {
-                case "MySQL":
-                {
-                    await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-                    await cn.OpenAsync(token);
-
-                    await using (MySqlCommand cm = new(RuntimeSettings.SelectQueryForNullStatus, cn))
-                    {
-                        dt.Load(await cm.ExecuteReaderAsync(token));
-                    }
-
-                    await cn.CloseAsync();
-
-                    break;
-                }
-
-                case "Oracle":
-                {
-                    await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-                    await cn.OpenAsync(token);
-
-                    await using (OracleCommand cm = new(RuntimeSettings.SelectQueryForNullStatus, cn))
-                    {
-                        dt.Load(await cm.ExecuteReaderAsync(token));
-                    }
-
-                    await cn.CloseAsync();
-
-                    break;
-                }
-
-                case "SQL":
-                {
-                    await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
-                    await cn.OpenAsync(token);
-
-                    await using (SqlCommand cm = new(RuntimeSettings.SelectQueryForNullStatus, cn))
-                    {
-                        dt.Load(await cm.ExecuteReaderAsync(token));
-                    }
-
-                    await cn.CloseAsync();
-
-                    break;
-                }
-            }
-
-            if (Convert.ToInt32(dt.Rows[0]["count"].ToString()) > RuntimeSettings.QueueCount)
-            {
-                string messageText = $"اخطار بالا رفتن تعداد پیامهای در صف بر روی {RuntimeSettings.ServiceName}{Environment.NewLine}تعداد صف {dt.Rows[0]["count"]}";
+                string messageText = $"اخطار بالا رفتن تعداد پیامهای در صف بر روی {RuntimeSettings.ServiceName}{Environment.NewLine}تعداد صف {dataTable.Rows[0]["count"]}";
                 await CreateAlertMessage(messageText, false, token);
             }
         }
@@ -687,183 +378,47 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
         }
     }
     
-    public static async Task UpdateDbForDlr(List<UpdateDbModel> updateList, CancellationToken cancellationToken)
+    private async Task UpdateDbForDlr(List<UpdateDbModel> updateList, CancellationToken token)
     {
-        string cmm = string.Empty;
-        switch (RuntimeSettings.DbProvider)
+        try
         {
-            case "SQL":
-            {
-                await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
+            await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
 
-                try
-                {
-                    await cn.OpenAsync(cancellationToken);
-                    cmm = updateList.Select(item => string.Format(RuntimeSettings.UpdateQueryForDelivery, (int)item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(cmm, (current, newCommand) => current + newCommand);
-                    await using SqlCommand cm = new(cmm, cn);
-                    cm.CommandTimeout = 120;
-                    cm.CommandType = CommandType.Text;
-                    await cm.ExecuteNonQueryAsync(cancellationToken);
-                    await cm.Connection.CloseAsync();
-                    await cn.CloseAsync();
-                }
-                catch (Exception e)
-                {
-                    await cn.CloseAsync();
-                    _errorCount++;
-                    _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error("Error in Update. Error is: {EMessage}", e.Message);
-                }
-
-                break;
-            }
-
-            case "MySQL":
-            {
-                await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                try
-                {
-                    await cn.OpenAsync(cancellationToken);
-                    cmm = updateList.Select(item => string.Format(RuntimeSettings.UpdateQueryForDelivery, item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(cmm, (current, newCommand) => current + newCommand);
-                    await using MySqlCommand cm = new(cmm, cn);
-                    cm.CommandType = CommandType.Text;
-                    cm.CommandTimeout = 120;
-                    await cm.ExecuteNonQueryAsync(cancellationToken);
-                    await cm.Connection!.CloseAsync();
-                    await cn.CloseAsync();
-                }
-                catch (Exception e)
-                {
-                    await cn.CloseAsync();
-                    _errorCount++;
-                    _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error("Error in Update. Error is: {EMessage}", e.Message);
-                }
-
-                break;
-            }
+            string strCommand = string.Empty;
+            strCommand = updateList.Select(item => string.Format(RuntimeSettings.UpdateQueryForDelivery, (int)item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(strCommand, (current, newCommand) => current + newCommand);
             
-            case "Oracle":
-            {
-                await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-
-                try
-                {
-                    await cn.OpenAsync(cancellationToken);
-                    cmm = updateList.Select(item => string.Format(RuntimeSettings.UpdateQueryForDelivery, item.Status, item.DeliveredAt, item.TrackingCode)).Aggregate(cmm, (current, newCommand) => current + newCommand);
-                    await using OracleCommand cm = new(cmm, cn);
-                    cm.CommandTimeout = 120;
-                    cm.CommandType = CommandType.Text;
-                    await cm.ExecuteNonQueryAsync(cancellationToken);
-                    await cm.Connection.CloseAsync();
-                    await cn.CloseAsync();
-                }
-                catch (Exception e)
-                {
-                    await cn.CloseAsync();
-                    _errorCount++;
-                    _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error("Error in Update. Error is: {EMessage}", e.Message);
-                }
-
-                break;
-            }
+            DbCommand command = connectionFactory.CreateCommand(strCommand, connection);
+            await command.ExecuteNonQueryAsync(token);
         }
-    }
-
-    public static async Task InsertInboxAsync(List<MoDto> list, CancellationToken token)
-    {
-        string cmm = string.Empty;
-
-        switch (RuntimeSettings.DbProvider)
+        catch (Exception e)
         {
-            case "SQL":
-            {
-                await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                try
-                {
-                    await cn.OpenAsync(token);
-                    cmm = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, item.ReceiveDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText))
-                              .Aggregate(cmm, (current, newCommand) => current + newCommand);
-
-                    await using SqlCommand cm = new(cmm, cn);
-                    cm.CommandTimeout = 120;
-                    cm.CommandType = CommandType.Text;
-                    await cm.ExecuteNonQueryAsync(token);
-                    cm.Connection.Close();
-                    await cn.CloseAsync();
-                }
-                catch (Exception e)
-                {
-                    await cn.CloseAsync();
-                    _errorCount++;
-                    _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error("Error in insert into inbound. Error is: {EMessage}", e.Message);
-                }
-
-                break;
-            }
-
-            case "MySQL":
-            {
-                await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                try
-                {
-                    await cn.OpenAsync(token);
-                    cmm = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, item.ReceiveDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText))
-                              .Aggregate(cmm, (current, newCommand) => current + newCommand);
-
-                    await using MySqlCommand cm = new(cmm, cn);
-                    cm.CommandType = CommandType.Text;
-                    cm.CommandTimeout = 120;
-                    await cm.ExecuteNonQueryAsync(token);
-                    await cm.Connection!.CloseAsync();
-                    await cn.CloseAsync();
-                }
-                catch (Exception e)
-                {
-                    await cn.CloseAsync();
-                    _errorCount++;
-                    _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error("Error in insert into inbound. Error is: {EMessage}", e.Message);
-                }
-
-                break;
-            }
-
-            case "Oracle":
-            {
-                await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-
-                try
-                {
-                    await cn.OpenAsync(token);
-                    cmm = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, item.ReceiveDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText))
-                              .Aggregate(cmm, (current, newCommand) => current + newCommand);
-
-                    await using OracleCommand cm = new(cmm, cn);
-                    cm.CommandTimeout = 120;
-                    cm.CommandType = CommandType.Text;
-                    await cm.ExecuteNonQueryAsync(token);
-                    await cm.Connection.CloseAsync();
-                    await cn.CloseAsync();
-                }
-                catch (Exception e)
-                {
-                    await cn.CloseAsync();
-                    _errorCount++;
-                    _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
-                    Log.Error("Error in insert into inbound. Error is: {EMessage}", e.Message);
-                }
-
-                break;
-            }
+            _errorCount++;
+            _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
+            Log.Error("Error in Update. Error is: {EMessage}", e.Message);
         }
     }
+    
+    private async Task InsertInboxAsync(List<MoDto> list, CancellationToken token)
+    {
+        try
+        {
+            await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
 
+            string strCommand = string.Empty;
+            strCommand = list.Select(item => string.Format(RuntimeSettings.InsertQueryForInbox, item.DestinationAddress, item.SourceAddress, item.ReceiveDateTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"), item.MessageText)).
+                              Aggregate(strCommand, (current, newCommand) => current + newCommand);
+
+            DbCommand command = connectionFactory.CreateCommand(strCommand, connection);
+            await command.ExecuteNonQueryAsync(token);
+        }
+        catch (Exception e)
+        {
+            _errorCount++;
+            _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
+            Log.Error("Error in insert into inbound. Error is: {EMessage}", e.Message);
+        }
+    }
+    
     private async Task ReadAndPostAsync(CancellationToken token)
     {
         if (!(DateTime.Now.TimeOfDay > RuntimeSettings.StartTime && DateTime.Now.TimeOfDay < RuntimeSettings.EndTime && RuntimeSettings.EnableSend))
@@ -871,301 +426,145 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
             return;
         }
 
-        DataTable dt = new();
+        DataTable dataTable = new();
 
         try
         {
-            Stopwatch sw1 = new();
-            Stopwatch sw2 = new();
-            Stopwatch sw3 = new();
-            Stopwatch sw4 = new();
-            Stopwatch total = new();
-            sw1.Start();
-            total.Start();
+            Dictionary<string, object> parameters = new();
+            Stopwatch total = Stopwatch.StartNew();
 
-            string command = string.Format(RuntimeSettings.SelectQueryForSend, RuntimeSettings.Tps);
-            //RuntimeSettings.FullLog.OptionalLog($"selectQueryForSend : {command}");
+            Stopwatch selectStopwatch = Stopwatch.StartNew();
 
-            switch (RuntimeSettings.DbProvider)
+            await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
+
+            string strCommand = !RuntimeSettings.SelectQueryForSend.StartsWith("SP:") ? string.Format(RuntimeSettings.SelectQueryForSend, RuntimeSettings.Tps) : RuntimeSettings.SelectQueryForSend.Remove(0, 3);
+            if (RuntimeSettings.SelectQueryForSend.StartsWith("SP:"))
             {
-                case "SQL":
-                {
-                    await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                    await cn.OpenAsync(token);
-
-                    try
-                    {
-                        await using SqlCommand cm = new(command, cn);
-                        cm.CommandTimeout = 120;
-                        dt.Load(await cm.ExecuteReaderAsync(token));
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (selectQueryForSend): {Command} {NewLine}  {EMessage}", command, Environment.NewLine, e.Message);
-                    }
-                    finally
-                    {
-                        await cn.CloseAsync();
-                    }
-
-                    break;
-                }
-
-                case "MySQL":
-                {
-                    await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                    await cn.OpenAsync(token);
-
-                    try
-                    {
-                        await using MySqlCommand cm = new(command, cn);
-                        cm.CommandTimeout = 120;
-                        dt.Load(await cm.ExecuteReaderAsync(token));
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (selectQueryForSend): {Command} {NewLine} {EMessage}", command, Environment.NewLine, e.Message);
-                    }
-                    finally
-                    {
-                        await cn.CloseAsync();
-                    }
-
-                    break;
-                }
-
-                case "Oracle":
-                {
-                    await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-
-                    await cn.OpenAsync(token);
-
-                    try
-                    {
-                        await using OracleCommand cm = new(command, cn);
-                        cm.CommandTimeout = 120;
-                        dt.Load(await cm.ExecuteReaderAsync(token));
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (selectQueryForSend): {Command} {NewLine} {EMessage}", command, Environment.NewLine, e.Message);
-                    }
-                    finally
-                    {
-                        await cn.CloseAsync();
-                    }
-
-                    break;
-                }
+                parameters.Add("@mps", RuntimeSettings.Tps);
             }
+            DbCommand command = connectionFactory.CreateCommand(strCommand, connection, parameters);
 
-            sw1.Stop();
-            sw2.Start();
+            
+            dataTable.Load(await command.ExecuteReaderAsync(token));
+            
+            selectStopwatch.Stop();
+            
+            Stopwatch createSendListStopwatch = new();
 
-            try
+            if (dataTable.Rows.Count > 0)
             {
-                if (dt.Rows.Count > 0)
+                List<MessageSendModel> list = [];
+                List<List<MessageSendModel>> messageToSendDtos = [];
+                int tId = 0;
+
+                foreach (DataRow dr in dataTable.Rows)
                 {
-                    List<MessageSendModel> list = [];
-                    List<List<MessageSendModel>> messageToSendDtos = [];
-                    int tId = 0;
+                    MessageSendModel messageSendModel = new()
+                                                        {
+                                                            SourceAddress = dr["SOURCEADDRESS"].ToString()?.Replace("+", "")!,
+                                                            DestinationAddress = dr["DESTINATIONADDRESS"].ToString()?.Replace("+", "")!,
+                                                            MessageText = dr["MESSAGETEXT"].ToString()!,
+                                                            Udh = dr["ID"].ToString()!,
+                                                            DataCoding = HasUniCodeCharacter(dr["MESSAGETEXT"].ToString()!) ? 8 : 0
+                                                        };
 
-                    foreach (DataRow dr in dt.Rows)
-                    {
-                        MessageSendModel messageSendModel = new()
-                                                            {
-                                                                SourceAddress = dr["SOURCEADDRESS"].ToString()?.Replace("+", "")!,
-                                                                DestinationAddress = dr["DESTINATIONADDRESS"].ToString()?.Replace("+", "")!,
-                                                                MessageText = dr["MESSAGETEXT"].ToString()!,
-                                                                Udh = dr["ID"].ToString()!,
-                                                                DataCoding = HasUniCodeCharacter(dr["MESSAGETEXT"].ToString()!) ? 8 : 0
-                                                            };
+                    list.Add(messageSendModel);
 
-                        list.Add(messageSendModel);
-
-                        if (list.Count >= RuntimeSettings.BatchSize)
-                        {
-                            messageToSendDtos.Add(list);
-                            list = [];
-                        }
-                    }
-
-                    if (list.Count > 0)
+                    if (list.Count >= RuntimeSettings.BatchSize)
                     {
                         messageToSendDtos.Add(list);
+                        list = [];
                     }
-
-                    if (RuntimeSettings.SendToWhiteList)
-                    {
-                        string mobiles = string.Join(",", messageToSendDtos.SelectMany(item => item.Select(m => $"'{m.DestinationAddress}'")).Distinct().ToList());
-                        
-                        string whiteListCommand = string.Format(RuntimeSettings.SelectQueryWhiteList, mobiles);
-                        DataTable whiteListTable = new();
-                        switch (RuntimeSettings.DbProvider)
-                        {
-                            case "SQL":
-                            {
-                                await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                                await cn.OpenAsync(token);
-                                await using SqlCommand cm = new(whiteListCommand, cn);
-                                cm.CommandTimeout = 120;
-                                cm.CommandType = CommandType.Text;
-                                whiteListTable.Load(await cm.ExecuteReaderAsync(token));
-                                await cm.Connection.CloseAsync();
-                                await cn.CloseAsync();
-
-                                break;
-                            }
-
-                            case "MySQL":
-                            {
-                                await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                                await cn.OpenAsync(token);
-                                await using MySqlCommand cm = new(whiteListCommand, cn);
-                                cm.CommandType = CommandType.Text;
-                                cm.CommandTimeout = 120;
-                                whiteListTable.Load(await cm.ExecuteReaderAsync(token));
-                                await cm.Connection!.CloseAsync();
-                                await cn.CloseAsync();
-
-                                break;
-                            }
-
-                            case "Oracle":
-                            {
-                                await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-
-                                await cn.OpenAsync(token);
-                                await using OracleCommand cm = new(whiteListCommand, cn);
-                                cm.CommandTimeout = 120;
-                                cm.CommandType = CommandType.Text;
-                                whiteListTable.Load(await cm.ExecuteReaderAsync(token));
-                                await cm.Connection.CloseAsync();
-                                await cn.CloseAsync();
-
-                                break;
-                            }
-                        }
-
-                        List<string> whiteList = whiteListTable.Rows.Cast<DataRow>().Select(row => row["mobile"].ToString()).ToList()!;
-
-                        List<MessageSendModel> tmpSend = [];
-                        List<MessageSendModel> tmpReject = [];
-                        foreach (MessageSendModel messageSendModel in messageToSendDtos.SelectMany(messageSendModels => messageSendModels))
-                        {
-                            if (whiteList.Count(m => messageSendModel.DestinationAddress == m) == 0)
-                            {
-                                tmpReject.Add(messageSendModel);
-                            }
-                            else
-                            {
-                                tmpSend.Add(messageSendModel);
-                            }
-                        }
-
-                        messageToSendDtos = tmpSend.Count > 0 ? tmpSend.Chunk(RuntimeSettings.BatchSize).Select(s => s.ToList()).ToList() : [];
-
-                        if (tmpReject.Count > 0)
-                        {
-                            await UpdateStatus(tmpReject.Select(r => r.Udh).ToList(), RuntimeSettings.StatusForFailedSend, token);
-                        }
-                    }
-
-                    sw2.Stop();
-
-                    if (messageToSendDtos.Count == 0)
-                    {
-                        return;
-                    }
-
-                    sw3.Start();
-                    List<string> ids = messageToSendDtos.SelectMany(item => item.Select(m => m.Udh)).ToList();
-                    command = string.Format(RuntimeSettings.UpdateQueryBeforeSend, string.Join(",", ids));
-                    RuntimeSettings.FullLog.OptionalLog($"updateQueryBeforeSend : {command}");
-
-                    switch (RuntimeSettings.DbProvider)
-                    {
-                        case "SQL":
-                        {
-                            await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                            await cn.OpenAsync(token);
-                            await using SqlCommand cm = new(command, cn);
-                            cm.CommandTimeout = 120;
-                            cm.CommandType = CommandType.Text;
-                            await cm.ExecuteNonQueryAsync(token);
-                            await cm.Connection.CloseAsync();
-
-                            await cn.CloseAsync();
-
-                            break;
-                        }
-
-                        case "MySQL":
-                        {
-                            await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                            await cn.OpenAsync(token);
-                            await using MySqlCommand cm = new(command, cn);
-                            cm.CommandType = CommandType.Text;
-                            cm.CommandTimeout = 120;
-                            await cm.ExecuteNonQueryAsync(token);
-                            await cm.Connection!.CloseAsync();
-                            await cn.CloseAsync();
-
-                            break;
-                        }
-
-                        case "Oracle":
-                        {
-                            await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-
-                            await cn.OpenAsync(token);
-                            await using OracleCommand cm = new(command, cn);
-                            cm.CommandTimeout = 120;
-                            cm.CommandType = CommandType.Text;
-                            await cm.ExecuteNonQueryAsync(token);
-                            await cm.Connection.CloseAsync();
-                            await cn.CloseAsync();
-
-                            break;
-                        }
-                    }
-
-                    sw3.Stop();
-                    
-                    sw4.Start();
-                    List<Task> tasks = [];
-                    foreach (List<MessageSendModel> item in messageToSendDtos)
-                    {
-                        tasks.Add(Task.Run(() => Send(item, tId++, token), token));
-                    }
-                    Task.WaitAll(tasks.ToArray(), TimeSpan.FromMinutes(3));
-
-                    sw4.Stop();
-
-                    total.Stop();
-                    Log.Information("Read count:{RowsCount}\tRead DB:{Sw1ElapsedMilliseconds}\tCreate send list:{Sw2ElapsedMilliseconds}\t Tasks: {TId}\t Update time: {Sw3ElapsedMilliseconds} \t Send time: {Sw4ElapsedMilliseconds} \t Total time: {TotalElapsedMilliseconds}", dt.Rows.Count, sw1.ElapsedMilliseconds, sw2.ElapsedMilliseconds, tId, sw3.ElapsedMilliseconds, sw4.ElapsedMilliseconds, total.ElapsedMilliseconds);
-
-                    dt.Dispose();
                 }
-            }
-            catch (Exception ex)
-            {
-                dt.Dispose();
-                _errorCount++;
-                _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{ex.Message}";
-                Log.Error("Error in Read and Send. Error is: {ExMessage}", ex.Message);
+
+                if (list.Count > 0)
+                {
+                    messageToSendDtos.Add(list);
+                }
+
+                if (RuntimeSettings.SendToWhiteList)
+                {
+                    string mobiles = string.Join(",", messageToSendDtos.SelectMany(item => item.Select(m => $"'{m.DestinationAddress}'")).Distinct().ToList());
+                        
+                    string whiteListCommand = string.Format(RuntimeSettings.SelectQueryWhiteList, mobiles);
+                    DataTable whiteListTable = new();
+
+                    command = connectionFactory.CreateCommand(whiteListCommand, connection);
+                    whiteListTable.Load(await command.ExecuteReaderAsync(token));
+                        
+                    List<string> whiteList = whiteListTable.Rows.Cast<DataRow>().Select(row => row["mobile"].ToString()).ToList()!;
+
+                    List<MessageSendModel> tmpSend = [];
+                    List<MessageSendModel> tmpReject = [];
+                    foreach (MessageSendModel messageSendModel in messageToSendDtos.SelectMany(messageSendModels => messageSendModels))
+                    {
+                        if (whiteList.Count(m => messageSendModel.DestinationAddress == m) == 0)
+                        {
+                            tmpReject.Add(messageSendModel);
+                        }
+                        else
+                        {
+                            tmpSend.Add(messageSendModel);
+                        }
+                    }
+
+                    messageToSendDtos = tmpSend.Count > 0 ? tmpSend.Chunk(RuntimeSettings.BatchSize).Select(s => s.ToList()).ToList() : [];
+
+                    if (tmpReject.Count > 0)
+                    {
+                        await UpdateStatus(tmpReject.Select(r => r.Udh).ToList(), RuntimeSettings.StatusForFailedSend, token);
+                    }
+                }
+
+                createSendListStopwatch.Stop();
+
+                if (messageToSendDtos.Count == 0)
+                {
+                    return;
+                }
+                    
+                Stopwatch updateQueryBeforeSendStopwatch = Stopwatch.StartNew();
+
+                List<string> ids = messageToSendDtos.SelectMany(item => item.Select(m => m.Udh)).ToList();
+                strCommand = string.Format(RuntimeSettings.UpdateQueryBeforeSend, string.Join(",", ids));
+                RuntimeSettings.FullLog.OptionalLog($"updateQueryBeforeSend : {strCommand}");
+
+                command = connectionFactory.CreateCommand(strCommand, connection);
+                await command.ExecuteNonQueryAsync(token);
+                    
+                updateQueryBeforeSendStopwatch.Stop();
+
+                Stopwatch sendStopwatch = Stopwatch.StartNew();
+
+                List<Task> tasks = [];
+                foreach (List<MessageSendModel> item in messageToSendDtos)
+                {
+                    tasks.Add(Task.Run(() => Send(item, tId++, token), token));
+                }
+                Task.WaitAll(tasks.ToArray(), TimeSpan.FromMinutes(3));
+
+                sendStopwatch.Stop();
+
+                total.Stop();
+
+                Log.Information("Read count:{RowsCount}\tRead DB:{Sw1ElapsedMilliseconds}\tCreate send list:{Sw2ElapsedMilliseconds}\t Tasks: {TId}\t Update time: {Sw3ElapsedMilliseconds} \t " +
+                                "Send time: {Sw4ElapsedMilliseconds} \t Total time: {TotalElapsedMilliseconds}",
+                                dataTable.Rows.Count,
+                                selectStopwatch.ElapsedMilliseconds,
+                                createSendListStopwatch.ElapsedMilliseconds,
+                                tId,
+                                updateQueryBeforeSendStopwatch.ElapsedMilliseconds,
+                                sendStopwatch.ElapsedMilliseconds,
+                                total.ElapsedMilliseconds);
+
+                dataTable.Dispose();
             }
         }
         catch (Exception e)
         {
+            _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
             _errorCount++;
-            dt.Dispose();
+            dataTable.Dispose();
             Log.Error("Error in ReadAndPost: {EMessage}", e.Message);
         }
     }
@@ -1265,58 +664,12 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                         sw2.Start();
                          
                         RuntimeSettings.FullLog.OptionalLog($"updateQueryAfterSend : {command}");
-
-                        switch (RuntimeSettings.DbProvider)
-                        {
-                            case "SQL":
-                            {
-                                await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                                await cn.OpenAsync(token);
-                                await using SqlCommand cm = new(command, cn);
-                                cm.CommandTimeout = 120;
-                                cm.CommandType = CommandType.Text;
-                                await cm.ExecuteNonQueryAsync(token);
-                                await cm.Connection.CloseAsync();
-
-                                await cn.CloseAsync();
-
-                                break;
-                            }
-
-                            case "MySQL":
-                            {
-                                await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                                await cn.OpenAsync(token);
-                                await using MySqlCommand cm = new(command, cn);
-                                cm.CommandType = CommandType.Text;
-                                cm.CommandTimeout = 120;
-                                await cm.ExecuteNonQueryAsync(token);
-                                await cm.Connection!.CloseAsync();
-                                await cn.CloseAsync();
-
-                                break;
-                            }
-
-                            case "Oracle":
-                            {
-                                await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-
-                                await cn.OpenAsync(token);
-                                await using OracleCommand cm = new(command, cn);
-                                cm.CommandTimeout = 120;
-                                cm.CommandType = CommandType.Text;
-                                await cm.ExecuteNonQueryAsync(token);
-                                await cm.Connection.CloseAsync();
-                                await cn.CloseAsync();
-
-                                break;
-                            }
-                        }
-
-                        sw2.Stop();
                         
+                        await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
+                        DbCommand dbCommand = connectionFactory.CreateCommand(command, connection);
+                        await dbCommand.ExecuteNonQueryAsync(token);
+                        
+                        sw2.Stop();
                     }
                     catch (Exception e)
                     {
@@ -1364,59 +717,13 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
     private async Task UpdateStatus(List<string> ids, string status, CancellationToken cancellationToken)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
-        switch (RuntimeSettings.DbProvider)
-        {
-            case "SQL":
-            {
-                await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
 
-                await cn.OpenAsync(cancellationToken);
-                string pattern = RuntimeSettings.UpdateQueryAfterFailedSend;
-                string command = ids.Select(id => string.Format(pattern, status, id)).Aggregate("", (current, newComm) => current + newComm);
-                await using SqlCommand cm = new(command, cn);
-                cm.CommandTimeout = 120;
-                cm.CommandType = CommandType.Text;
-                await cm.ExecuteNonQueryAsync(cancellationToken);
-                await cm.Connection.CloseAsync();
-                await cn.CloseAsync();
-
-                break;
-            }
-
-            case "MySQL":
-            {
-                await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                await cn.OpenAsync(cancellationToken);
-                string pattern = RuntimeSettings.UpdateQueryAfterFailedSend;
-                string command = ids.Select(id => string.Format(pattern, status, id)).Aggregate("", (current, newComm) => current + newComm);
-                await using MySqlCommand cm = new(command, cn);
-                cm.CommandType = CommandType.Text;
-                cm.CommandTimeout = 120;
-                await cm.ExecuteNonQueryAsync(cancellationToken);
-                await cm.Connection!.CloseAsync();
-                await cn.CloseAsync();
-
-                break;
-            }
-                
-            case "Oracle":
-            {
-                await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-
-                await cn.OpenAsync(cancellationToken);
-                string pattern = RuntimeSettings.UpdateQueryAfterFailedSend;
-                string command = ids.Select(id => string.Format(pattern, status, id)).Aggregate("", (current, newComm) => current + newComm);
-                await using OracleCommand cm = new(command, cn);
-                cm.CommandTimeout = 120;
-                cm.CommandType = CommandType.Text;
-                await cm.ExecuteNonQueryAsync(cancellationToken);
-                await cm.Connection.CloseAsync();
-                await cn.CloseAsync();
-
-                break;
-            }
-        }
+        await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+        string strCommand = ids.Select(id => string.Format(RuntimeSettings.UpdateQueryAfterFailedSend, status, id)).Aggregate("", (current, newComm) => current + newComm);
+        
+        DbCommand dbCommand = connectionFactory.CreateCommand(strCommand, connection);
+        await dbCommand.ExecuteNonQueryAsync(cancellationToken);
+        
         stopwatch.Stop();
 
         Log.Information("Update failed messages\t Update time:{StopwatchElapsedMilliseconds}", stopwatch.ElapsedMilliseconds);
@@ -1431,112 +738,29 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
         try
         {
-            DataTable dataTable = new();
-
             int offset = 0;
+            await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(token);
 
-            switch (RuntimeSettings.DbProvider)
+            try
             {
-                case "SQL":
+                bool hasRow = true;
+
+                while (hasRow)
                 {
-                    await using SqlConnection cn = new(RuntimeSettings.ConnectionString);
+                    DataTable dataTable = new();
+                    DbCommand dbCommand = connectionFactory.CreateCommand(string.Format(RuntimeSettings.SelectQueryForGetDelivery, offset), connection);
+                    dataTable.Load(await dbCommand.ExecuteReaderAsync(token));
 
-                    await cn.OpenAsync(token);
+                    offset += 900;
 
-                    try
-                    {
-                        bool hasRow = true;
-
-                        while (hasRow)
-                        {
-                            await using SqlCommand cm = new(string.Format(RuntimeSettings.SelectQueryForGetDelivery, offset), cn);
-                            dataTable.Load(await cm.ExecuteReaderAsync(token));
-
-                            offset += 900;
-
-                            hasRow = await UpdateDelivery1(dataTable);
-                            dataTable = new();
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (getDelivery): {EMessage}", e.Message);
-                    }
-                    finally
-                    {
-                        await cn.CloseAsync();
-                    }
-
-                    break;
-                }
-
-                case "MySQL":
-                {
-                    await using MySqlConnection cn = new(RuntimeSettings.ConnectionString);
-
-                    await cn.OpenAsync(token);
-
-                    try
-                    {
-                        bool hasRow = true;
-
-                        while (hasRow)
-                        {
-                            await using MySqlCommand cm = new(string.Format(RuntimeSettings.SelectQueryForGetDelivery, offset), cn);
-                            dataTable.Load(await cm.ExecuteReaderAsync(token));
-
-                            offset += 900;
-
-                            hasRow = await UpdateDelivery1(dataTable);
-                            dataTable = new();
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (getDelivery): {EMessage}", e.Message);
-                    }
-                    finally
-                    {
-                        await cn.CloseAsync();
-                    }
-
-                    break;
-                }
-
-                case "Oracle":
-                {
-                    await using OracleConnection cn = new(RuntimeSettings.ConnectionString);
-
-                    await cn.OpenAsync(token);
-
-                    try
-                    {
-                        bool hasRow = true;
-
-                        while (hasRow)
-                        {
-                            await using OracleCommand cm = new(string.Format(RuntimeSettings.SelectQueryForGetDelivery, offset), cn);
-                            dataTable.Load(await cm.ExecuteReaderAsync(token));
-
-                            offset += 900;
-
-                            hasRow = await UpdateDelivery1(dataTable);
-                            dataTable = new();
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Log.Error("Error in read db (getDelivery): {EMessage}", e.Message);
-                    }
-                    finally
-                    {
-                        await cn.CloseAsync();
-                    }
-
-                    break;
+                    hasRow = await UpdateDelivery1(dataTable);
                 }
             }
-
+            catch (Exception e)
+            {
+                Log.Error("Error in read db (getDelivery): {EMessage}", e.Message);
+            }
+            
             async Task<HttpResponseMessage> SetResult(List<string> ids)
             {
                 HttpClient client = clientFactory.CreateClient();
@@ -1556,7 +780,7 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
                 return await client.PostAsync(Url.Combine(RuntimeSettings.SmsEndPointBaseAddress, $"api/message/GetDLR?returnLongId={RuntimeSettings.ReturnLongId}"), content, token);
             }
 
-            async ValueTask<bool> UpdateDelivery1(DataTable table)
+            async Task<bool> UpdateDelivery1(DataTable table)
             {
                 if (table.Rows.Count <= 0)
                 {
@@ -1565,78 +789,81 @@ public class Worker(IHttpClientFactory clientFactory) : BackgroundService
 
                 List<string> ids = table.AsEnumerable().Select(m => m[0].ToString()).ToList()!;
                 Loop:
+
                 Stopwatch sw1 = Stopwatch.StartNew();
                 HttpResponseMessage response = await SetResult(ids);
                 sw1.Stop();
-                if (response.StatusCode == HttpStatusCode.Unauthorized)
+
+                switch (response.StatusCode)
                 {
-                    if (!RuntimeSettings.UseApiKey)
+                    case HttpStatusCode.Unauthorized:
                     {
-                        GetToken(token);
-                        goto Loop;
-                    }
-
-                    if (RuntimeSettings.UseApiKey)
-                    {
-                        return false;
-                    }
-                }
-
-                if (response.StatusCode == HttpStatusCode.OK)
-                {
-                    ResultApiClass<List<DlrStatus>>? resultApi = JsonConvert.DeserializeObject<ResultApiClass<List<DlrStatus>>>(await response.Content.ReadAsStringAsync(token));
-                    List<DlrStatus> statusList = resultApi!.Data;
-                    List<DlrDto> initialList = [];
-
-                    Log.Information("statusList: {SerializeObject}", JsonConvert.SerializeObject(statusList));
-
-                    for (int i = 0; i < table.Rows.Count; i++)
-                    {
-                        if (statusList.Any(s => s.Id == table.Rows[i][0].ToString()))
+                        if (!RuntimeSettings.UseApiKey)
                         {
-                            DlrStatus dlrStatus = statusList.First(s => s.Id == table.Rows[i][0].ToString());
-
-                            initialList.AddRange(from dlrStatusPartStatus in dlrStatus.PartStatus
-                                                 where dlrStatus.DeliveryStatus != DeliveryStatus.Sent
-                                                 select new DlrDto
-                                                        {
-                                                            Status = dlrStatus.DeliveryStatus,
-                                                            DateTime = dlrStatus.DeliveryDate!.Value.ToLocalTime().ToString(),
-                                                            MessageId = dlrStatus.Id,
-                                                            FullDelivery = dlrStatus.PartStatus.All(p => p.Item2 == DeliveryStatus.Delivered),
-                                                            PartNumber = dlrStatusPartStatus.Item1,
-                                                            Mobile = ""
-                                                        });
+                            GetToken(token);
+                            goto Loop;
                         }
-                    }
 
-                    if (initialList.Any())
+                        if (RuntimeSettings.UseApiKey)
+                        {
+                            return false;
+                        }
+
+                        break;
+                    }
+                    case HttpStatusCode.OK:
                     {
-                        List<UpdateDbModel> updateList = [];
-                        Stopwatch sw2 = new();
-                        Stopwatch sw3 = new();
-                        sw2.Start();
-                        updateList.AddRange(initialList.Select(dto => new UpdateDbModel { Status = dto.Status, TrackingCode = dto.MessageId, DeliveredAt = Convert.ToDateTime(dto.DateTime).ToString("yyyy-MM-dd HH:mm:ss") }));
-                        sw2.Stop();
-                        sw3.Start();
-                        await UpdateDbForDlr(updateList, token);
-                        sw3.Stop();
-                        Log.Information("DLR - Api call time: {Sw1ElapsedMilliseconds}\t Create update list: {Sw2ElapsedMilliseconds}\t Update list count: {UpdateListCount}\t update time: {Sw3ElapsedMilliseconds}", sw1.ElapsedMilliseconds, sw2.ElapsedMilliseconds, updateList.Count, sw3.ElapsedMilliseconds);
+                        ResultApiClass<List<DlrStatus>>? resultApi = JsonConvert.DeserializeObject<ResultApiClass<List<DlrStatus>>>(await response.Content.ReadAsStringAsync(token));
+                        List<DlrStatus> statusList = resultApi!.Data;
+                        List<DlrDto> initialList = [];
+
+                        Log.Information("statusList: {SerializeObject}", JsonConvert.SerializeObject(statusList));
+
+                        for (int i = 0; i < table.Rows.Count; i++)
+                        {
+                            if (statusList.Any(s => s.Id == table.Rows[i][0].ToString()))
+                            {
+                                DlrStatus dlrStatus = statusList.First(s => s.Id == table.Rows[i][0].ToString());
+
+                                initialList.AddRange(from dlrStatusPartStatus in dlrStatus.PartStatus
+                                                     where dlrStatus.DeliveryStatus != DeliveryStatus.Sent
+                                                     select new DlrDto
+                                                            {
+                                                                Status = dlrStatus.DeliveryStatus,
+                                                                DateTime = dlrStatus.DeliveryDate!.Value.ToLocalTime().ToString(),
+                                                                MessageId = dlrStatus.Id,
+                                                                FullDelivery = dlrStatus.PartStatus.All(p => p.Item2 == DeliveryStatus.Delivered),
+                                                                PartNumber = dlrStatusPartStatus.Item1,
+                                                                Mobile = ""
+                                                            });
+                            }
+                        }
+
+                        if (initialList.Any())
+                        {
+                            List<UpdateDbModel> updateList = [];
+                            Stopwatch sw2 = new();
+                            Stopwatch sw3 = new();
+                            sw2.Start();
+                            updateList.AddRange(initialList.Select(dto => new UpdateDbModel { Status = dto.Status, TrackingCode = dto.MessageId, DeliveredAt = Convert.ToDateTime(dto.DateTime).ToString("yyyy-MM-dd HH:mm:ss") }));
+                            sw2.Stop();
+                            sw3.Start();
+                            await UpdateDbForDlr(updateList, token);
+                            sw3.Stop();
+                            Log.Information("DLR - Api call time: {Sw1ElapsedMilliseconds}\t Create update list: {Sw2ElapsedMilliseconds}\t Update list count: {UpdateListCount}\t update time: {Sw3ElapsedMilliseconds}", sw1.ElapsedMilliseconds, sw2.ElapsedMilliseconds, updateList.Count, sw3.ElapsedMilliseconds);
+                        }
+
+                    
+                        return true;
                     }
+                    case HttpStatusCode.NotFound:
+                        RuntimeSettings.FullLog.OptionalLog($"get dlr not found delivery for ids : {JsonConvert.SerializeObject(ids)}");
 
-                    
-                    return true;
-                }
-                    
-                if (response.StatusCode == HttpStatusCode.NotFound)
-                {
-                    RuntimeSettings.FullLog.OptionalLog($"get dlr not found delivery for ids : {JsonConvert.SerializeObject(ids)}");
-
-                    return true;
+                        return true;
                 }
 
                 RuntimeSettings.FullLog.OptionalLog($"get dlr - api call error : {JsonConvert.SerializeObject(response)}");
-               RuntimeSettings.FullLog.OptionalLog($"get dlr - ids : {JsonConvert.SerializeObject(ids)}");
+                RuntimeSettings.FullLog.OptionalLog($"get dlr - ids : {JsonConvert.SerializeObject(ids)}");
                 return true;
             }
         }

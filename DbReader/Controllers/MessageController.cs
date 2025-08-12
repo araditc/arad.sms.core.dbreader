@@ -1,6 +1,6 @@
 ﻿using System.Data;
 
-using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
+using Arad.SMS.Core.DbReader.Models;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,7 +12,7 @@ using Oracle.ManagedDataAccess.Client;
 
 using Serilog;
 
-namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Controllers;
+namespace Arad.SMS.Core.DbReader.Controllers;
 
 [ApiController]
 [Authorize(AuthenticationSchemes = "ApiKey")]
