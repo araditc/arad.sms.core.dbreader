@@ -172,7 +172,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
         {
             Log.Information("Start getting token");
             HttpClient client = clientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(3);
+            client.Timeout = TimeSpan.FromSeconds(RuntimeSettings.Timeout);
 
             HttpRequestMessage request = new(HttpMethod.Post, $"{RuntimeSettings.SmsEndPointBaseAddress}/connect/token");
             MultipartFormDataContent multipartContent = new();
@@ -338,7 +338,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
 
             // Try sending Alerts
             HttpClient client = clientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(3);
+            client.Timeout = TimeSpan.FromSeconds(RuntimeSettings.Timeout);
 
             if (!RuntimeSettings.UseApiKey)
             {
@@ -572,7 +572,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
     private async Task Send(List<MessageSendModel> listToSend, int tId, CancellationToken token)
     {
         HttpClient client = clientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromMinutes(3);
+        client.Timeout = TimeSpan.FromSeconds(RuntimeSettings.Timeout);
 
         if (!RuntimeSettings.UseApiKey)
         {
@@ -764,7 +764,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
             async Task<HttpResponseMessage> SetResult(List<string> ids)
             {
                 HttpClient client = clientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromMinutes(3);
+                client.Timeout = TimeSpan.FromSeconds(RuntimeSettings.Timeout);
 
                 if (!RuntimeSettings.UseApiKey)
                 {
@@ -887,7 +887,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
             List<MoDto> initialList = [];
 
             HttpClient client = clientFactory.CreateClient();
-            client.Timeout = TimeSpan.FromMinutes(3);
+            client.Timeout = TimeSpan.FromSeconds(RuntimeSettings.Timeout);
 
             if (!RuntimeSettings.UseApiKey)
             {
