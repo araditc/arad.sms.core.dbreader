@@ -1,4 +1,4 @@
-﻿namespace Arad.SMS.Core.DbReader.Models;
+﻿namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 public class ScheduledJob(string name, TimeSpan interval, Func<CancellationToken, Task> action)
 {

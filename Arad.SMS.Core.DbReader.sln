@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.7.34221.43
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Arad.SMS.Core.DbReader", "DbReader\Arad.SMS.Core.DbReader.csproj", "{15069C45-F5E7-42A4-B0E2-D80D3DC3158F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Arad.SMS.Core.DbReader", "DbReader\DbReader.csproj", "{15069C45-F5E7-42A4-B0E2-D80D3DC3158F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

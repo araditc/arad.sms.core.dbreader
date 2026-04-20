@@ -1,6 +1,6 @@
 ﻿using System.Data.Common;
 
-namespace Arad.SMS.Core.DbReader.Factory;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Factory;
 
 public interface IDbConnectionFactory
 {

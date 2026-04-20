@@ -2,7 +2,10 @@
 using System.Data.Common;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
+
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Services;
 
 using Microsoft.Data.SqlClient;
 
@@ -15,7 +18,7 @@ using Polly.Retry;
 
 using Serilog;
 
-namespace Arad.SMS.Core.DbReader.Factory;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Factory;
 
 public class DbConnectionFactory : IDbConnectionFactory
 {
@@ -53,6 +56,8 @@ public class DbConnectionFactory : IDbConnectionFactory
 
     public DbCommand CreateCommand(string commandText, DbConnection connection, Dictionary<string, object>? parameters = null)
     {
+        RuntimeSettings.FullLog.OptionalLog($"commandText: {commandText}");
+
         DbCommand command = RuntimeSettings.DbProvider switch
                             {
                                 "SQL" => new SqlCommand(commandText, (SqlConnection)connection),
@@ -63,7 +68,7 @@ public class DbConnectionFactory : IDbConnectionFactory
         command.CommandTimeout = 120;
         command.CommandType = CommandType.Text;
 
-        if (parameters != null)
+        if (parameters is { Count: > 0 })
         {
             command.CommandType = CommandType.StoredProcedure;
             foreach (KeyValuePair<string, object> param in parameters)
@@ -74,6 +79,9 @@ public class DbConnectionFactory : IDbConnectionFactory
                 command.Parameters.Add(dbParam);
             }
         }
+
+        RuntimeSettings.FullLog.OptionalLog($"command Final: {command.CommandText}");
+        RuntimeSettings.FullLog.OptionalLog($"command Final: {JsonSerializer.Serialize(command)}");
 
         return command;
     }
@@ -142,7 +150,7 @@ public class DbConnectionFactory : IDbConnectionFactory
 
             await using (MySqlCommand command = new(query, connection))
             {
-                await using (MySqlDataReader reader = await command.ExecuteReaderAsync(token))
+                await using (MySqlDataReader reader = await command.ExecuteReaderAsync(0, token))
                 {
                     if (await reader.ReadAsync(token))
                     {

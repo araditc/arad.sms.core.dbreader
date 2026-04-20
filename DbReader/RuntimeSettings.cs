@@ -1,4 +1,4 @@
-﻿namespace Arad.SMS.Core.DbReader;
+﻿namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader;
 
 public static class RuntimeSettings
 {
@@ -32,6 +32,12 @@ public static class RuntimeSettings
 
     public static bool EnableSend { get; set; } = true;
 
+    public static bool EnableCheckWaitingForSend { get; set; }
+
+    public static int CheckWaitingForSendIntervalTime { get; set; }
+
+    public static int DefaultValidityPeriod { get; set; } = 360;
+    
     public static bool ReturnLongId { get; set; }
 
     public static int Tps { get; set; }
@@ -61,6 +67,8 @@ public static class RuntimeSettings
     public static string SmsEndPointBaseAddress { get; set; } = string.Empty;
 
     public static string SourceAddress { get; set; } = string.Empty;
+
+    public static int DeliveryStatusType { get; set; } = 1;
 
     public static string StatusForFailedSend { get; set; } = string.Empty;
 
@@ -106,6 +114,10 @@ public static class RuntimeSettings
 
     public static string SendApiKey { get; set; } = string.Empty;
 
+    public static string SelectQueryForCheckWaitingForSend { get; set; } = string.Empty;
+
+    public static string UpdateQueryForWaitingForSend { get; set; } = string.Empty;
+
     public static Task LoadSetting(CancellationToken cancellationToken)
     {
         if (Configuration == null)
@@ -122,6 +134,12 @@ public static class RuntimeSettings
         SendToWhiteList = Convert.ToBoolean(Configuration["Message:SendToWhiteList"]);
         EnableGetDlr = Convert.ToBoolean(Configuration["Message:EnableGetDLR"]);
         EnableGetMo = Convert.ToBoolean(Configuration["Message:EnableGetMO"]);
+        EnableCheckWaitingForSend = Convert.ToBoolean(Configuration["Message:EnableCheckWaitingForSend"]);
+
+        DefaultValidityPeriod = Convert.ToInt32(Configuration["Message:DefaultValidityPeriod"]);
+        DeliveryStatusType = Convert.ToInt32(Configuration["Message:DeliveryStatusType"]);
+        CheckWaitingForSendIntervalTime = Convert.ToInt32(Configuration["Message:CheckWaitingForSendIntervalTime"]);
+
         DbProvider = Configuration["DB:Provider"] ?? "";
         ConnectionString = Configuration["DB:ConnectionString"] ?? "";
         SelectQueryForSend = Configuration["DB:SelectQueryForSend"] ?? "";
@@ -143,6 +161,9 @@ public static class RuntimeSettings
         OutboxTableName = Configuration["DB:OutboxTableName"] ?? "";
         InsertQueryForOutbox = Configuration["DB:InsertQueryForOutbox"] ?? "";
         SelectDeliveryQuery = Configuration["DB:SelectDeliveryQuery"] ?? "";
+        SelectQueryForCheckWaitingForSend = Configuration["DB:SelectQueryForCheckWaitingForSend"] ?? "";
+        UpdateQueryForWaitingForSend = Configuration["DB:UpdateQueryForWaitingForSend"] ?? "";
+
         SendApiKey = Configuration["URLSetting:SendApiKey"] ?? "";
 
         #region API Setting

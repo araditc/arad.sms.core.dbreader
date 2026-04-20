@@ -16,7 +16,14 @@
 //  limitations under the License.
 //  --------------------------------------------------------------------
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
+
+public class MessageList
+{
+    public List<KeyValuePair<string, int>> Ids { get; set; } = [];
+
+    public MessageSendModel MessageSendModel { get; set; } = new();
+}
 
 public class MessageSendModel
 {
@@ -31,4 +38,6 @@ public class MessageSendModel
     public int DataCoding { get; set; }
 
     public bool HasUdh { get; set; }
+
+    public DateTime ValidityPeriod { get; set; }
 }

@@ -1,4 +1,4 @@
-﻿namespace Arad.SMS.Core.DbReader.Models;
+﻿namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 public class ResultApiV4
 {
@@ -6,5 +6,5 @@ public class ResultApiV4
 
     public string UpstreamGateway { get; set; } = null!;
 
-    public int Part { get; set; }
+    public string Part { get; set; } = null!;
 }

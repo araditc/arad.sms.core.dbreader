@@ -17,7 +17,7 @@
 //  --------------------------------------------------------------------
 
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 public class DlrStatus
 {
@@ -29,5 +29,8 @@ public class DlrStatus
 
     public DateTime? DeliveryDate { get; set; }
 
+    public DateTime? SentDate { get; set; }
+
     public required string Udh { get; set; }
+
 }

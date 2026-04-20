@@ -17,7 +17,7 @@
 //  --------------------------------------------------------------------
 
 
-namespace Arad.SMS.Core.DbReader.Models;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 /// <summary>
 /// Indicates the encoding scheme of the short message.

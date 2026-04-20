@@ -3,14 +3,14 @@ using System.Data.Common;
 using System.Diagnostics;
 using System.Web;
 
-using Arad.SMS.Core.DbReader.Factory;
-using Arad.SMS.Core.DbReader.Models;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Factory;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 using Microsoft.AspNetCore.Mvc;
 
 using Serilog;
 
-namespace Arad.SMS.Core.DbReader.Controllers;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Controllers;
 
 public class HookController(IDbConnectionFactory connectionFactory) : Controller
 {

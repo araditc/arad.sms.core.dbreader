@@ -1,8 +1,7 @@
-﻿using Arad.SMS.Core.DbReader.Models;
-
+﻿using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 using Serilog;
 
-namespace Arad.SMS.Core.DbReader.Services;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Services;
 
 public class TimedWorker: BackgroundService
 {

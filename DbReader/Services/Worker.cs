@@ -23,20 +23,17 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Mime;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
-using Arad.SMS.Core.DbReader.Factory;
-using Arad.SMS.Core.DbReader.Models;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Factory;
+using Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Models;
 
 using Flurl;
 
-using Newtonsoft.Json;
-
 using Serilog;
 
-//using MySqlConnector;
-
-namespace Arad.SMS.Core.DbReader.Services;
+namespace Arad.SMS.Core.WorkerForDownstreamGateway.DbReader.Services;
 
 public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory connectionFactory) : BackgroundService
 {
@@ -71,7 +68,12 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
             ScheduledJobs.Add(new ("Send", TimeSpan.FromSeconds(1), ReadAndPostAsync));
             ScheduledJobs.Add(new ("ArchiveData", TimeSpan.FromSeconds(1), ArchiveDataAsync));
             ScheduledJobs.Add(new ("CreateAlertMessage", TimeSpan.FromSeconds(1), CreateAlertMessageAsync));
-
+            
+            if (RuntimeSettings.CheckWaitingForSendIntervalTime > 0)
+            {
+                ScheduledJobs.Add(new("CheckPending", TimeSpan.FromSeconds(RuntimeSettings.CheckWaitingForSendIntervalTime), CheckWaitingForSend));
+            }
+            
             if (RuntimeSettings.MOIntervalTime > 0)
             {
                 ScheduledJobs.Add(new("GetMo", TimeSpan.FromMinutes(RuntimeSettings.MOIntervalTime), GetMoAsync));
@@ -96,7 +98,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
         }
         catch (Exception e)
         {
-            Log.Error(e.Message);
+            Log.Error("ExecuteAsync error {e}", e.Message);
         }
     }
     
@@ -349,7 +351,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                 client.DefaultRequestHeaders.Add("X-API-Key", RuntimeSettings.ApiKey);
             }
 
-            StringContent content = new(JsonConvert.SerializeObject(listToSend), Encoding.UTF8, MediaTypeNames.Application.Json);
+            StringContent content = new(JsonSerializer.Serialize(listToSend), Encoding.UTF8, MediaTypeNames.Application.Json);
 
             HttpResponseMessage response = await client.PostAsync(Url.Combine(RuntimeSettings.SmsEndPointBaseAddress, "api/message/send"), content, token);
 
@@ -443,7 +445,6 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                 parameters.Add("@mps", RuntimeSettings.Tps);
             }
             DbCommand command = connectionFactory.CreateCommand(strCommand, connection, parameters);
-
             
             dataTable.Load(await command.ExecuteReaderAsync(token));
             
@@ -465,7 +466,8 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                                                             DestinationAddress = dr["DESTINATIONADDRESS"].ToString()?.Replace("+", "")!,
                                                             MessageText = dr["MESSAGETEXT"].ToString()!,
                                                             Udh = dr["ID"].ToString()!,
-                                                            DataCoding = HasUniCodeCharacter(dr["MESSAGETEXT"].ToString()!) ? 8 : 0
+                                                            DataCoding = HasUniCodeCharacter(dr["MESSAGETEXT"].ToString()!) ? 8 : 0,
+                                                            ValidityPeriod = DateTime.Now.AddMinutes(RuntimeSettings.DefaultValidityPeriod)
                                                         };
 
                     list.Add(messageSendModel);
@@ -526,6 +528,8 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                 Stopwatch updateQueryBeforeSendStopwatch = Stopwatch.StartNew();
 
                 List<string> ids = messageToSendDtos.SelectMany(item => item.Select(m => m.Udh)).ToList();
+                RuntimeSettings.FullLog.OptionalLog($"Result For ids: {JsonSerializer.Serialize(ids)}");
+
                 strCommand = string.Format(RuntimeSettings.UpdateQueryBeforeSend, string.Join(",", ids));
                 RuntimeSettings.FullLog.OptionalLog($"updateQueryBeforeSend : {strCommand}");
 
@@ -569,7 +573,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
         }
     }
     
-    private async Task Send(List<MessageSendModel> listToSend, int tId, CancellationToken token)
+    private async Task<bool> Send(List<MessageSendModel> listToSend, int tId, CancellationToken token)
     {
         HttpClient client = clientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(RuntimeSettings.Timeout);
@@ -583,7 +587,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
             client.DefaultRequestHeaders.Add("X-API-Key", RuntimeSettings.ApiKey);
         }
 
-        byte[] data = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(listToSend));
+        byte[] data = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(listToSend));
         using MemoryStream ms = new ();
         await using (GZipStream gzip = new (ms, CompressionMode.Compress))
         {
@@ -610,14 +614,15 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                 if (ids.Count > 0)
                 {
                     RuntimeSettings.FullLog.OptionalLog($"response content : {await response.Content.ReadAsStringAsync(token)}");
-                    RuntimeSettings.FullLog.OptionalLog($"ids : {JsonConvert.SerializeObject(ids)}");
+                    RuntimeSettings.FullLog.OptionalLog($"ids : {JsonSerializer.Serialize(ids)}");
 	                string command = string.Empty;
 
 	                switch (RuntimeSettings.ApiVersion)
 	                {
 		                case 4:
 		                {
-			                ResultApiClass<List<ResultApiV4>>? batchIds = JsonConvert.DeserializeObject<ResultApiClass<List<ResultApiV4>>>(await response.Content.ReadAsStringAsync(token));
+                            JsonSerializerOptions options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+			                ResultApiClass<List<ResultApiV4>>? batchIds = JsonSerializer.Deserialize<ResultApiClass<List<ResultApiV4>>>(await response.Content.ReadAsStringAsync(token), options);
 
                                 command = batchIds!.Data.Select((d, index) => string.Format(RuntimeSettings.UpdateQueryAfterSend,
                                                                                             d.Id.Length > 4 ? RuntimeSettings.StatusForSuccessSend : RuntimeSettings.StatusForFailedSend,  //  Status
@@ -632,7 +637,8 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
 
 		                case 3 or 2:
 		                {
-			                ResultApiClass<List<KeyValuePair<string, string>>>? batchIds = JsonConvert.DeserializeObject<ResultApiClass<List<KeyValuePair<string, string>>>>(await response.Content.ReadAsStringAsync(token));
+                            JsonSerializerOptions options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+			                ResultApiClass<List<KeyValuePair<string, string>>>? batchIds = JsonSerializer.Deserialize<ResultApiClass<List<KeyValuePair<string, string>>>>(await response.Content.ReadAsStringAsync(token), options);
 
 			                command = batchIds!.Data.Select((d, index) => string.Format(RuntimeSettings.UpdateQueryAfterSend,
                                                                                         d.Key.Length > 4 ? RuntimeSettings.StatusForSuccessSend : RuntimeSettings.StatusForFailedSend,  //  Status
@@ -647,7 +653,8 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
 
 		                case 1:
 		                {
-			                ResultApiClass<List<string>>? batchIds = JsonConvert.DeserializeObject<ResultApiClass<List<string>>>(await response.Content.ReadAsStringAsync(token));
+                            JsonSerializerOptions options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+			                ResultApiClass<List<string>>? batchIds = JsonSerializer.Deserialize<ResultApiClass<List<string>>>(await response.Content.ReadAsStringAsync(token), options);
 
 			                command = batchIds!.Data.Select((d, index) => string.Format(RuntimeSettings.UpdateQueryAfterSend,
                                                                                         d.Length > 4 ? RuntimeSettings.StatusForSuccessSend : RuntimeSettings.StatusForFailedSend,  //  Status
@@ -679,8 +686,10 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                     }
                 }
                 Log.Information("TaskId: {TId}\tSend time: {Sw1ElapsedMilliseconds}\t count:{Count}\t Update count:{IdsCount}\tUpdate time:{Sw2ElapsedMilliseconds}", tId, sw1.ElapsedMilliseconds, listToSend.Count, ids.Count, sw2.ElapsedMilliseconds);
+                return true;
             }
-            else if (response.StatusCode == HttpStatusCode.Unauthorized)
+            
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
             {
                 if (!RuntimeSettings.UseApiKey)
                 {
@@ -704,6 +713,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
             }
             
             Log.Information("Update failed messages \tTaskId: {TId}\tSend time: {Sw1ElapsedMilliseconds}\t count:{Count}\t Update count:{IdsCount}", tId, sw1.ElapsedMilliseconds, listToSend.Count, ids.Count);
+            return false;
         }
         catch (Exception e)
         {
@@ -711,6 +721,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
             _errorCount++;
             _messageText = $"خطا در سرویس : {RuntimeSettings.ServiceName}{Environment.NewLine}{e.Message}";
             Log.Error("Send error : {EMessage}", e.Message);
+            return false;
         }
     }
 
@@ -761,25 +772,6 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                 Log.Error("Error in read db (getDelivery): {EMessage}", e.Message);
             }
             
-            async Task<HttpResponseMessage> SetResult(List<string> ids)
-            {
-                HttpClient client = clientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromSeconds(RuntimeSettings.Timeout);
-
-                if (!RuntimeSettings.UseApiKey)
-                {
-                    client.DefaultRequestHeaders.Add("Authorization", "Bearer " + _accessToken);
-                }
-                else
-                {
-                    client.DefaultRequestHeaders.Add("X-API-Key", RuntimeSettings.ApiKey);
-                }
-
-                StringContent content = new(JsonConvert.SerializeObject(ids), Encoding.UTF8, MediaTypeNames.Application.Json);
-
-                return await client.PostAsync(Url.Combine(RuntimeSettings.SmsEndPointBaseAddress, $"api/message/GetDLR?returnLongId={RuntimeSettings.ReturnLongId}"), content, token);
-            }
-
             async Task<bool> UpdateDelivery1(DataTable table)
             {
                 if (table.Rows.Count <= 0)
@@ -791,7 +783,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                 Loop:
 
                 Stopwatch sw1 = Stopwatch.StartNew();
-                HttpResponseMessage response = await SetResult(ids);
+                HttpResponseMessage response = await GetDeliveryAsync(ids, token);
                 sw1.Stop();
 
                 switch (response.StatusCode)
@@ -813,11 +805,12 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                     }
                     case HttpStatusCode.OK:
                     {
-                        ResultApiClass<List<DlrStatus>>? resultApi = JsonConvert.DeserializeObject<ResultApiClass<List<DlrStatus>>>(await response.Content.ReadAsStringAsync(token));
+                        JsonSerializerOptions options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+                        ResultApiClass<List<DlrStatus>>? resultApi = JsonSerializer.Deserialize<ResultApiClass<List<DlrStatus>>>(await response.Content.ReadAsStringAsync(token), options);
                         List<DlrStatus> statusList = resultApi!.Data;
                         List<DlrDto> initialList = [];
 
-                        Log.Information("statusList: {SerializeObject}", JsonConvert.SerializeObject(statusList));
+                        Log.Information("statusList: {SerializeObject}", JsonSerializer.Serialize(statusList));
 
                         for (int i = 0; i < table.Rows.Count; i++)
                         {
@@ -857,13 +850,13 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                         return true;
                     }
                     case HttpStatusCode.NotFound:
-                        RuntimeSettings.FullLog.OptionalLog($"get dlr not found delivery for ids : {JsonConvert.SerializeObject(ids)}");
+                        RuntimeSettings.FullLog.OptionalLog($"get dlr not found delivery for ids : {JsonSerializer.Serialize(ids)}");
 
                         return true;
                 }
 
-                RuntimeSettings.FullLog.OptionalLog($"get dlr - api call error : {JsonConvert.SerializeObject(response)}");
-                RuntimeSettings.FullLog.OptionalLog($"get dlr - ids : {JsonConvert.SerializeObject(ids)}");
+                RuntimeSettings.FullLog.OptionalLog($"get dlr - api call error : {JsonSerializer.Serialize(response)}");
+                RuntimeSettings.FullLog.OptionalLog($"get dlr - ids : {JsonSerializer.Serialize(ids)}");
                 return true;
             }
         }
@@ -871,6 +864,25 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
         {
             Log.Error("Error GetDelivery : {EMessage}", e.Message);
         }
+    }
+
+    private async Task<HttpResponseMessage> GetDeliveryAsync(List<string> ids, CancellationToken cancellationToken, bool returnSentDate = false)
+    {
+        HttpClient client = clientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(RuntimeSettings.Timeout);
+
+        if (!RuntimeSettings.UseApiKey)
+        {
+            client.DefaultRequestHeaders.Add("Authorization", "Bearer " + _accessToken);
+        }
+        else
+        {
+            client.DefaultRequestHeaders.Add("X-API-Key", RuntimeSettings.ApiKey);
+        }
+
+        StringContent content = new(JsonSerializer.Serialize(ids), Encoding.UTF8, MediaTypeNames.Application.Json);
+
+        return await client.PostAsync(Url.Combine(RuntimeSettings.SmsEndPointBaseAddress, $"api/message/GetDLR?returnLongId={RuntimeSettings.ReturnLongId}&returnSentDate={returnSentDate}"), content, cancellationToken);
     }
 
     private async Task GetMoAsync(CancellationToken token)
@@ -899,7 +911,7 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
             }
 
             HttpResponseMessage response = await client.GetAsync(Url.Combine(RuntimeSettings.SmsEndPointBaseAddress, "api/message/GetMO?returnId=true"), token);
-            RuntimeSettings.FullLog.OptionalLog($"{JsonConvert.SerializeObject(await response.Content.ReadAsStringAsync(token))}");
+            RuntimeSettings.FullLog.OptionalLog($"{JsonSerializer.Serialize(await response.Content.ReadAsStringAsync(token))}");
             sw1.Stop();
 
             if (response.StatusCode == HttpStatusCode.NotFound)
@@ -919,7 +931,8 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
                 return;
             }
 
-            ResultApiClass<List<MoDto>>? moStatus = JsonConvert.DeserializeObject<ResultApiClass<List<MoDto>>>(await response.Content.ReadAsStringAsync(token));
+            JsonSerializerOptions options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            ResultApiClass<List<MoDto>>? moStatus = JsonSerializer.Deserialize<ResultApiClass<List<MoDto>>>(await response.Content.ReadAsStringAsync(token), options);
 
             List<MoDto> inboxSaveQueueDtos = moStatus!.Data.Select(mo => new MoDto
                                                                          {
@@ -1006,6 +1019,96 @@ public class Worker(IHttpClientFactory clientFactory, IDbConnectionFactory conne
     public static bool HasUniCodeCharacter(string text)
     {
         return Regex.IsMatch(text, "[^\u0000-\u00ff]");
+    }
+
+    private async Task CheckWaitingForSend(CancellationToken cancellationToken)
+    {
+        if (!RuntimeSettings.EnableCheckWaitingForSend)
+        {
+            return;
+        }
+
+        DataTable dataTable = new();
+        Log.Information("start CheckWaitingForSend");
+ 
+        try
+        {
+            await using DbConnection connection = await connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+            DbCommand command = connectionFactory.CreateCommand(RuntimeSettings.SelectQueryForCheckWaitingForSend, connection);
+            dataTable.Load(await command.ExecuteReaderAsync(cancellationToken));
+
+            Log.Information($"CheckWaitingForSend load item count : {dataTable.Rows.Count}");
+
+            if (dataTable.Rows.Count <= 0)
+            {
+                Log.Information("CheckWaitingForSend not found row");
+                return;
+            }
+          
+            List<string> ids = (from DataRow dataRow in dataTable.Rows select dataRow["ID"].ToString()).ToList();
+            List<string[]> chunkIds = ids.Chunk(990).ToList();
+
+            foreach (string[] strings in chunkIds)
+            {
+                await Pending(strings.ToList(), connection);
+            }
+            
+            async Task Pending(List<string> chunk, DbConnection dbConnection)
+            {
+                HttpResponseMessage response = await GetDeliveryAsync(chunk, cancellationToken, true);
+
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    if (!RuntimeSettings.UseApiKey)
+                    {
+                        GetToken(cancellationToken);
+                    }
+
+                    Log.Information("CheckWaitingForSend api key unauthorized");
+                    return;
+                }
+
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    RuntimeSettings.FullLog.OptionalLog($"CheckWaitingForSend not found delivery for ids : {JsonSerializer.Serialize(ids)}");
+                    return;
+                }
+
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    JsonSerializerOptions options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+                    ResultApiClass<List<DlrStatus>>? resultApi = JsonSerializer.Deserialize<ResultApiClass<List<DlrStatus>>>(await response.Content.ReadAsStringAsync(cancellationToken), options);
+                    if (resultApi != null)
+                    {
+                        List<DlrStatus> statusList = resultApi.Data;
+                        DateTime dateTime = DateTime.Now;
+
+                        foreach (string item in chunk)
+                        {
+                            string strCommand;
+                            if (statusList.Any(s => s.Udh.Equals(item)))
+                            {
+                                DlrStatus dlrStatus = statusList.First(s => s.Udh == item);
+                                strCommand = string.Format(RuntimeSettings.UpdateQueryForWaitingForSend, dlrStatus.Id, dlrStatus.SentDate is not null ? dlrStatus.SentDate.Value.ToLocalTime().ToString("G") : dateTime, item);
+                            }
+                            else
+                            {
+                                strCommand = string.Format(RuntimeSettings.UpdateQueryForWaitingForSend, DBNull.Value, DBNull.Value, item);
+                            }
+
+                            command = connectionFactory.CreateCommand(strCommand, dbConnection);
+                            await command.ExecuteNonQueryAsync(cancellationToken);
+                        }
+
+                        Log.Information($"CheckWaitingForSend set status to sent: {statusList.Count}\t WaitingForSend count: {ids.Count}");
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Error($"Error in CheckPending: {e.Message}");
+        }
     }
 }
 
